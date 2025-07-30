@@ -1,14 +1,20 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Checkbox } from "@/components/ui/checkbox"
-import { subscribeToNewsletter } from "@/app/actions/newsletter"
-import { useActionState } from "react"
-import { Mail, Sparkles, Users, TrendingUp } from "lucide-react"
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { subscribeToNewsletter } from "@/app/actions/newsletter";
+import { useActionState } from "react";
+import { Mail, Sparkles, Users, TrendingUp } from "lucide-react";
 
 const categories = [
   {
@@ -39,19 +45,40 @@ const categories = [
     icon: "📚",
     color: "from-red-500 to-orange-500",
   },
-]
+];
 
 export function NewsletterSubscription() {
-  const [selectedCategories, setSelectedCategories] = useState<string[]>(["artists", "trends"])
-  const [state, action, isPending] = useActionState(subscribeToNewsletter, null)
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([
+    "artists",
+    "trends",
+  ]);
+  const [state, action, isPending] = useActionState(
+    subscribeToNewsletter,
+    null
+  );
 
   const handleCategoryChange = (categoryId: string, checked: boolean) => {
     if (checked) {
-      setSelectedCategories((prev) => [...prev, categoryId])
+      setSelectedCategories((prev) => [...prev, categoryId]);
     } else {
-      setSelectedCategories((prev) => prev.filter((id) => id !== categoryId))
+      setSelectedCategories((prev) => prev.filter((id) => id !== categoryId));
     }
-  }
+  };
+
+  const handleSubmit = async (formData: FormData) => {
+    // Create payload with form data
+    const payload = {
+      email: formData.get("email") as string,
+      name: (formData.get("name") as string) || "",
+      categories: selectedCategories,
+      timestamp: new Date().toISOString(),
+    };
+
+    console.log("Newsletter subscription payload:", payload);
+
+    // Call the server action with the form data
+    action(formData);
+  };
 
   return (
     <Card className="w-full shadow-xl border-0 bg-white/80 backdrop-blur-sm">
@@ -60,18 +87,34 @@ export function NewsletterSubscription() {
           <div className="p-2 bg-gradient-to-r from-blue-500 to-purple-500 rounded-lg">
             <Mail className="h-5 w-5 text-white" />
           </div>
-          <CardTitle className="text-2xl font-bold text-gray-900">Subscribe to Newsletter</CardTitle>
+          <CardTitle className="text-2xl font-bold text-gray-900">
+            Subscribe to Newsletter
+          </CardTitle>
         </div>
         <CardDescription className="text-base text-gray-600 leading-relaxed">
-          Choose your interests and get personalized content delivered weekly to your inbox
+          Choose your interests and get personalized content delivered weekly to
+          your inbox
         </CardDescription>
       </CardHeader>
 
       <CardContent className="space-y-8">
-        <form action={action} className="space-y-8">
+        <form action={handleSubmit} className="space-y-8">
+          {/* Hidden input for categories */}
+          {selectedCategories.map((categoryId) => (
+            <input
+              key={categoryId}
+              type="hidden"
+              name="categories"
+              value={categoryId}
+            />
+          ))}
+
           {/* Email Input */}
           <div className="space-y-3">
-            <Label htmlFor="email" className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+            <Label
+              htmlFor="email"
+              className="text-sm font-semibold text-gray-700 flex items-center gap-2"
+            >
               <Mail className="h-4 w-4" />
               Email Address
             </Label>
@@ -87,7 +130,10 @@ export function NewsletterSubscription() {
 
           {/* Name Input */}
           <div className="space-y-3">
-            <Label htmlFor="name" className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+            <Label
+              htmlFor="name"
+              className="text-sm font-semibold text-gray-700 flex items-center gap-2"
+            >
               <Users className="h-4 w-4" />
               Name (Optional)
             </Label>
@@ -115,7 +161,9 @@ export function NewsletterSubscription() {
                       name="categories"
                       value={category.id}
                       checked={selectedCategories.includes(category.id)}
-                      onCheckedChange={(checked) => handleCategoryChange(category.id, checked as boolean)}
+                      onCheckedChange={(checked) =>
+                        handleCategoryChange(category.id, checked as boolean)
+                      }
                       className="mt-1 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
                     />
                     <div className="flex-1 space-y-2">
@@ -128,7 +176,9 @@ export function NewsletterSubscription() {
                           {category.label}
                         </Label>
                       </div>
-                      <p className="text-sm text-gray-600 leading-relaxed">{category.description}</p>
+                      <p className="text-sm text-gray-600 leading-relaxed">
+                        {category.description}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -165,7 +215,7 @@ export function NewsletterSubscription() {
             </div>
           )}
 
-          {state?.error && (
+          {state && !state.success && (
             <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
               <div className="flex items-center gap-2 text-red-800">
                 <div className="w-2 h-2 bg-red-500 rounded-full"></div>
@@ -196,5 +246,5 @@ export function NewsletterSubscription() {
         </div>
       </CardContent>
     </Card>
-  )
+  );
 }
