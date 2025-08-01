@@ -1,182 +1,332 @@
-import { qlooService, type QlooEntity } from "./qloo-service";
-import { GoogleGenAI } from "@google/genai";
-import { prisma } from "./prisma";
-import { generateNewsletterEmailHTML } from "./email-template";
+import { qlooService, type QlooEntity } from "./qloo-service"
+import { GoogleGenAI } from "@google/genai"
+import { prisma } from "./prisma"
+import { generateNewsletterEmailHTML } from "./email-template"
 
 export interface NewsletterArticle {
-  title: string;
-  content: string;
-  category: string;
-  image_url?: string;
-  trending: boolean;
-  source_data: QlooEntity;
-  affinity_score?: number;
-  demographic_insights?: string;
-  read_time: string;
-  excerpt: string;
-  tags: string[];
+  title: string
+  content: string
+  category: string
+  image_url?: string
+  trending: boolean
+  source_data: QlooEntity
+  affinity_score?: number
+  demographic_insights?: string
+  read_time: string
+  excerpt: string
+  tags: string[]
 }
 
 export interface UserPreferences {
-  location?: string;
-  demographics?: string[];
-  interests?: string[];
-  tags?: string[];
+  location?: string
+  demographics?: string[]
+  interests?: string[]
+  tags?: string[]
+}
+
+export interface NewsletterGenerationResult {
+  articles: NewsletterArticle[]
+  newsletter: {
+    id: string
+    title: string
+    subtitle?: string
+    weekOf: Date
+    categories: string[]
+    htmlContent: string
+    isExisting?: boolean
+  }
 }
 
 export class NewsletterGenerator {
-  private ai: GoogleGenAI;
+  private ai: GoogleGenAI
 
   constructor() {
     this.ai = new GoogleGenAI({
       apiKey: process.env.GEMINI_API_KEY || "your-gemini-api-key-here",
-    });
+    })
   }
 
-  async generatePersonalizedNewsletter(
-    categories: string[],
-    userPreferences?: UserPreferences
-  ): Promise<NewsletterArticle[]> {
-    const articles: NewsletterArticle[] = [];
+  // NEW: Database-integrated newsletter generation
+  async generateNewsletterContentWithDB(categories: string[], weekOf?: string): Promise<NewsletterGenerationResult> {
+    const targetWeek = weekOf ? new Date(weekOf) : this.getCurrentWeekStart()
+    const sortedCategories = [...categories].sort()
 
     console.log(
-      `📝 Generating premium newsletter for categories: ${categories.join(
-        ", "
-      )}`
-    );
+      `📰 Generating newsletter for week ${targetWeek.toISOString()}, categories: ${sortedCategories.join(", ")}`,
+    )
+
+    // Check if newsletter already exists
+    const existingNewsletter = await prisma.newsletter.findFirst({
+      where: {
+        weekOf: targetWeek,
+        categories: {
+          equals: sortedCategories,
+        },
+      },
+    })
+
+    if (existingNewsletter) {
+      console.log(`✅ Found existing newsletter: ${existingNewsletter.id}`)
+      return {
+        articles: existingNewsletter.articles as NewsletterArticle[],
+        newsletter: {
+          id: existingNewsletter.id,
+          title: existingNewsletter.title,
+          subtitle: existingNewsletter.subtitle || undefined,
+          weekOf: existingNewsletter.weekOf,
+          categories: existingNewsletter.categories,
+          htmlContent: existingNewsletter.htmlContent,
+          isExisting: true,
+        },
+      }
+    }
+
+    // Generate new newsletter content
+    console.log(`🔨 Creating new newsletter for categories: ${sortedCategories.join(", ")}`)
+    const articles = await this.generatePersonalizedNewsletter(categories)
+
+    if (articles.length === 0) {
+      throw new Error("Failed to generate newsletter articles")
+    }
+
+    // Create newsletter title
+    const title = this.generateNewsletterTitle(categories, targetWeek)
+    const subtitle = this.generateNewsletterSubtitle(categories)
+
+    // Generate HTML content
+    const htmlContent = generateNewsletterEmailHTML(articles, "Newsletter Subscriber")
+
+    // Save to database
+    const newsletter = await prisma.newsletter.create({
+      data: {
+        title,
+        subtitle,
+        weekOf: targetWeek,
+        categories: sortedCategories,
+        articles: articles as any, // Prisma Json type
+        htmlContent,
+      },
+    })
+
+    console.log(`✅ Created newsletter: ${newsletter.id} with ${articles.length} articles`)
+
+    return {
+      articles,
+      newsletter: {
+        id: newsletter.id,
+        title: newsletter.title,
+        subtitle: newsletter.subtitle || undefined,
+        weekOf: newsletter.weekOf,
+        categories: newsletter.categories,
+        htmlContent: newsletter.htmlContent,
+        isExisting: false,
+      },
+    }
+  }
+
+  // NEW: Personalized newsletter with database integration
+  async generatePersonalizedNewsletterWithDB(
+    categories: string[],
+    userPreferences?: UserPreferences,
+    weekOf?: string,
+  ): Promise<NewsletterGenerationResult> {
+    // For personalized newsletters, we don't cache since they're user-specific
+    const articles = await this.generatePersonalizedNewsletter(categories, userPreferences)
+    const targetWeek = weekOf ? new Date(weekOf) : this.getCurrentWeekStart()
+
+    const title = this.generatePersonalizedNewsletterTitle(categories, targetWeek)
+    const subtitle = "Personalized insights based on your preferences"
+    const htmlContent = generateNewsletterEmailHTML(articles, "Valued Subscriber")
+
+    // Save personalized newsletter (these are typically not cached)
+    const newsletter = await prisma.newsletter.create({
+      data: {
+        title,
+        subtitle,
+        weekOf: targetWeek,
+        categories: [...categories].sort(),
+        articles: articles as any,
+        htmlContent,
+      },
+    })
+
+    return {
+      articles,
+      newsletter: {
+        id: newsletter.id,
+        title: newsletter.title,
+        subtitle: newsletter.subtitle || undefined,
+        weekOf: newsletter.weekOf,
+        categories: newsletter.categories,
+        htmlContent: newsletter.htmlContent,
+        isExisting: false,
+      },
+    }
+  }
+
+  // NEW: Location-based newsletter with database integration
+  async generateLocationBasedNewsletterWithDB(
+    location: string,
+    categories: string[],
+    weekOf?: string,
+  ): Promise<NewsletterGenerationResult> {
+    const articles = await this.generateLocationBasedNewsletter(location, categories)
+    const targetWeek = weekOf ? new Date(weekOf) : this.getCurrentWeekStart()
+
+    const title = `${location} Trends: ${this.generateNewsletterTitle(categories, targetWeek)}`
+    const subtitle = `Location-based insights for ${location}`
+    const htmlContent = generateNewsletterEmailHTML(articles, "Local Subscriber")
+
+    const newsletter = await prisma.newsletter.create({
+      data: {
+        title,
+        subtitle,
+        weekOf: targetWeek,
+        categories: [...categories].sort(),
+        articles: articles as any,
+        htmlContent,
+      },
+    })
+
+    return {
+      articles,
+      newsletter: {
+        id: newsletter.id,
+        title: newsletter.title,
+        subtitle: newsletter.subtitle || undefined,
+        weekOf: newsletter.weekOf,
+        categories: newsletter.categories,
+        htmlContent: newsletter.htmlContent,
+        isExisting: false,
+      },
+    }
+  }
+
+  // Helper methods for title generation
+  private generateNewsletterTitle(categories: string[], weekOf: Date): string {
+    const weekStr = weekOf.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+    const categoryStr = categories.length === 1 ? this.formatCategory(categories[0]) : `${categories.length} Categories`
+
+    return `🎵 ${categoryStr} Trends - Week of ${weekStr}`
+  }
+
+  private generatePersonalizedNewsletterTitle(categories: string[], weekOf: Date): string {
+    const weekStr = weekOf.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+    return `🎯 Your Personalized Trends - Week of ${weekStr}`
+  }
+
+  private generateNewsletterSubtitle(categories: string[]): string {
+    const categoryNames = categories.map((cat) => this.formatCategory(cat)).join(", ")
+    return `Latest insights in ${categoryNames}`
+  }
+
+  private getCurrentWeekStart(): Date {
+    const now = new Date()
+    const day = now.getDay()
+    const diff = day === 0 ? -6 : 1 - day // Monday is start of week
+    const monday = new Date(now.getTime() + diff * 24 * 60 * 60 * 1000)
+    monday.setHours(0, 0, 0, 0)
+    return monday
+  }
+
+  // EXISTING METHODS (keeping all the original functionality)
+  async generatePersonalizedNewsletter(
+    categories: string[],
+    userPreferences?: UserPreferences,
+  ): Promise<NewsletterArticle[]> {
+    const articles: NewsletterArticle[] = []
+
+    console.log(`📝 Generating premium newsletter for categories: ${categories.join(", ")}`)
 
     for (const category of categories.slice(0, 3)) {
       try {
-        console.log(`🎯 Processing category: ${category}`);
+        console.log(`🎯 Processing category: ${category}`)
 
-        const entities = await qlooService.getTrendingByCategory(
-          category,
-          userPreferences
-        );
-        console.log(`📊 Found ${entities.length} entities for ${category}`);
+        const entities = await qlooService.getTrendingByCategory(category, userPreferences)
+        console.log(`📊 Found ${entities.length} entities for ${category}`)
 
         if (entities.length > 0) {
           // Pick the top entity with highest affinity score
-          const topEntity = entities.sort(
-            (a, b) => (b.affinity_score || 0) - (a.affinity_score || 0)
-          )[0];
-          console.log(`🏆 Selected entity: ${topEntity.name} for ${category}`);
+          const topEntity = entities.sort((a, b) => (b.affinity_score || 0) - (a.affinity_score || 0))[0]
+          console.log(`🏆 Selected entity: ${topEntity.name} for ${category}`)
 
           // Get demographic insights for this entity
-          let demographics: any[] = [];
+          let demographics: any[] = []
           try {
-            const demographicResult = await qlooService.getDemographicInsights(
-              topEntity.entity_id
-            );
-            demographics = Array.isArray(demographicResult)
-              ? demographicResult
-              : [];
-            console.log(
-              `📈 Got ${demographics.length} demographic insights for ${topEntity.name}`
-            );
+            const demographicResult = await qlooService.getDemographicInsights(topEntity.entity_id)
+            demographics = Array.isArray(demographicResult) ? demographicResult : []
+            console.log(`📈 Got ${demographics.length} demographic insights for ${topEntity.name}`)
           } catch (demoError) {
-            console.log(
-              `⚠️ Could not get demographics for ${topEntity.name}:`,
-              demoError
-            );
-            demographics = [];
+            console.log(`⚠️ Could not get demographics for ${topEntity.name}:`, demoError)
+            demographics = []
           }
 
-          const article = await this.generatePremiumArticle(
-            topEntity,
-            category,
-            demographics
-          );
-          articles.push(article);
-          console.log(
-            `✅ Generated premium article: "${article.title}" (${article.read_time})`
-          );
+          const article = await this.generatePremiumArticle(topEntity, category, demographics)
+          articles.push(article)
+          console.log(`✅ Generated premium article: "${article.title}" (${article.read_time})`)
         } else {
-          console.log(`⚠️ No entities found for category: ${category}`);
-          const fallbackArticle = await this.createPremiumFallbackArticle(
-            category
-          );
-          articles.push(fallbackArticle);
-          console.log(`🔄 Created premium fallback article for ${category}`);
+          console.log(`⚠️ No entities found for category: ${category}`)
+          const fallbackArticle = await this.createPremiumFallbackArticle(category)
+          articles.push(fallbackArticle)
+          console.log(`🔄 Created premium fallback article for ${category}`)
         }
       } catch (error) {
-        console.error(
-          `❌ Error generating article for category ${category}:`,
-          error
-        );
-        const errorArticle = await this.createPremiumFallbackArticle(category);
-        articles.push(errorArticle);
+        console.error(`❌ Error generating article for category ${category}:`, error)
+        const errorArticle = await this.createPremiumFallbackArticle(category)
+        articles.push(errorArticle)
       }
     }
 
-    console.log(
-      `🎉 Premium newsletter generation complete: ${articles.length} articles created`
-    );
-    return articles;
+    console.log(`🎉 Premium newsletter generation complete: ${articles.length} articles created`)
+    return articles
   }
 
-  async generateLocationBasedNewsletter(
-    location: string,
-    categories: string[]
-  ): Promise<NewsletterArticle[]> {
-    const articles: NewsletterArticle[] = [];
+  async generateLocationBasedNewsletter(location: string, categories: string[]): Promise<NewsletterArticle[]> {
+    const articles: NewsletterArticle[] = []
 
     for (const category of categories.slice(0, 3)) {
       try {
-        let filterType: string;
+        let filterType: string
         switch (category) {
           case "artists":
-            filterType = "urn:entity:artist";
-            break;
+            filterType = "urn:entity:artist"
+            break
           case "movies":
-            filterType = "urn:entity:movie";
-            break;
+            filterType = "urn:entity:movie"
+            break
           case "trends":
-            filterType = "urn:entity:movie";
-            break;
+            filterType = "urn:entity:movie"
+            break
           default:
-            filterType = "urn:entity:movie";
+            filterType = "urn:entity:movie"
         }
 
-        const entities = await qlooService.getLocationBasedInsights(
-          filterType,
-          location,
-          { limit: 5 }
-        );
+        const entities = await qlooService.getLocationBasedInsights(filterType, location, { limit: 5 })
 
         if (entities.length > 0) {
-          const entity = entities[0];
-          const article = await this.generateLocationAwareArticle(
-            entity,
-            category,
-            location
-          );
-          articles.push(article);
+          const entity = entities[0]
+          const article = await this.generateLocationAwareArticle(entity, category, location)
+          articles.push(article)
         }
       } catch (error) {
-        console.error(
-          `Error generating location-based article for ${category}:`,
-          error
-        );
+        console.error(`Error generating location-based article for ${category}:`, error)
       }
     }
 
-    return articles;
+    return articles
   }
 
   private async generatePremiumArticle(
     entity: QlooEntity,
     category: string,
-    demographics: any[]
+    demographics: any[],
   ): Promise<NewsletterArticle> {
-    const safeDemographics = Array.isArray(demographics) ? demographics : [];
-    const demographicInsight = this.analyzeDemographics(safeDemographics);
+    const safeDemographics = Array.isArray(demographics) ? demographics : []
+    const demographicInsight = this.analyzeDemographics(safeDemographics)
 
     // Enhanced prompt for longer, more engaging content
     const prompt = `
-Write a comprehensive, engaging newsletter article about ${
-      entity.name
-    } in the ${category} category.
+Write a comprehensive, engaging newsletter article about ${entity.name} in the ${category} category.
 
 Entity Information:
 - Name: ${entity.name}
@@ -207,39 +357,35 @@ STRUCTURE:
 
 Write as if for a sophisticated audience who wants depth and insight, not just surface-level information.
 Do not use markdown formatting, bullet points, or special characters in your response.
-`;
+`
 
     try {
-      const model = "gemini-2.0-flash-lite";
+      const model = "gemini-2.0-flash-lite"
       const contents = [
         {
           role: "user",
           parts: [{ text: prompt }],
         },
-      ];
+      ]
 
       const response = await this.ai.models.generateContentStream({
         model,
         contents,
-      });
+      })
 
-      let generatedText = "";
+      let generatedText = ""
       for await (const chunk of response) {
         if (chunk.text) {
-          generatedText += chunk.text;
+          generatedText += chunk.text
         }
       }
 
-      const cleanedContent = this.cleanContent(generatedText);
-      const wordCount = cleanedContent.split(" ").length;
-      const readTime = Math.max(2, Math.ceil(wordCount / 200)); // Assume 200 words per minute
+      const cleanedContent = this.cleanContent(generatedText)
+      const wordCount = cleanedContent.split(" ").length
+      const readTime = Math.max(2, Math.ceil(wordCount / 200)) // Assume 200 words per minute
 
       return {
-        title: this.generatePremiumTitle(
-          entity.name,
-          category,
-          entity.affinity_score
-        ),
+        title: this.generatePremiumTitle(entity.name, category, entity.affinity_score),
         content: cleanedContent,
         excerpt: this.generateExcerpt(cleanedContent),
         category: this.formatCategory(category),
@@ -250,28 +396,20 @@ Do not use markdown formatting, bullet points, or special characters in your res
         demographic_insights: demographicInsight,
         read_time: `${readTime} min read`,
         tags: this.generateTags(entity, category),
-      };
-    } catch (error) {
-      console.error("Error generating premium article:", error);
-      
-      // Check if it's a service unavailable error (API overloaded)
-      if (error instanceof Error && (error.message.includes('503') || error.message.includes('overloaded') || error.message.includes('UNAVAILABLE'))) {
-        console.log("🔄 AI service overloaded, using premium fallback content");
       }
-      
-      return await this.createPremiumFallbackArticle(category, entity);
+    } catch (error) {
+      console.error("Error generating premium article:", error)
+      return this.createPremiumFallbackArticle(category, entity)
     }
   }
 
   private async generateLocationAwareArticle(
     entity: QlooEntity,
     category: string,
-    location: string
+    location: string,
   ): Promise<NewsletterArticle> {
     const prompt = `
-Write a comprehensive, location-focused newsletter article about ${
-      entity.name
-    } in the ${category} category.
+Write a comprehensive, location-focused newsletter article about ${entity.name} in the ${category} category.
 
 Entity Information:
 - Name: ${entity.name}
@@ -298,38 +436,35 @@ STRUCTURE:
 
 Write as premium content for readers interested in ${location}'s cultural scene.
 Do not use markdown formatting, bullet points, or special characters.
-`;
+`
 
     try {
-      const model = "gemini-2.0-flash-lite";
+      const model = "gemini-2.0-flash-lite"
       const contents = [
         {
           role: "user",
           parts: [{ text: prompt }],
         },
-      ];
+      ]
 
       const response = await this.ai.models.generateContentStream({
         model,
         contents,
-      });
+      })
 
-      let generatedText = "";
+      let generatedText = ""
       for await (const chunk of response) {
         if (chunk.text) {
-          generatedText += chunk.text;
+          generatedText += chunk.text
         }
       }
 
-      const cleanedContent = this.cleanContent(generatedText);
-      const wordCount = cleanedContent.split(" ").length;
-      const readTime = Math.max(2, Math.ceil(wordCount / 200));
+      const cleanedContent = this.cleanContent(generatedText)
+      const wordCount = cleanedContent.split(" ").length
+      const readTime = Math.max(2, Math.ceil(wordCount / 200))
 
       return {
-        title: `${location} Spotlight: ${this.generateLocationTitle(
-          entity.name,
-          location
-        )}`,
+        title: `${location} Spotlight: ${this.generateLocationTitle(entity.name, location)}`,
         content: cleanedContent,
         excerpt: this.generateExcerpt(cleanedContent),
         category: this.formatCategory(category),
@@ -340,24 +475,16 @@ Do not use markdown formatting, bullet points, or special characters.
         demographic_insights: `Trending in ${location}`,
         read_time: `${readTime} min read`,
         tags: this.generateLocationTags(entity, category, location),
-      };
-    } catch (error) {
-      console.error("Error generating location-aware article:", error);
-      
-      // Check if it's a service unavailable error (API overloaded)
-      if (error instanceof Error && (error.message.includes('503') || error.message.includes('overloaded') || error.message.includes('UNAVAILABLE'))) {
-        console.log("🔄 AI service overloaded, using location-aware fallback content");
       }
-      
-      return await this.createPremiumFallbackArticle(category, entity);
+    } catch (error) {
+      console.error("Error generating location-aware article:", error)
+      return this.createPremiumFallbackArticle(category, entity)
     }
   }
 
   // BULLETPROOF: Generate images using only SVG data URLs (guaranteed to work)
   private generateReliableImage(category: string): string {
-    console.log(
-      `🎨 Generating bulletproof SVG image for category: ${category}`
-    );
+    console.log(`🎨 Generating bulletproof SVG image for category: ${category}`)
 
     // Simplified category-specific configurations (no special characters)
     const categoryConfig = {
@@ -451,11 +578,9 @@ Do not use markdown formatting, bullet points, or special characters.
         label: "TV",
         subtitle: "Binge-Worthy Series",
       },
-    };
+    }
 
-    const config = categoryConfig[
-      category.toLowerCase() as keyof typeof categoryConfig
-    ] || {
+    const config = categoryConfig[category.toLowerCase() as keyof typeof categoryConfig] || {
       primaryColor: "#6366F1",
       secondaryColor: "#8B5CF6",
       bgColor: "#F8FAFC",
@@ -463,7 +588,7 @@ Do not use markdown formatting, bullet points, or special characters.
       icon: "✨",
       label: "CONTENT",
       subtitle: "Premium Insights",
-    };
+    }
 
     // Create a clean, simple SVG that will definitely work
     const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400" viewBox="0 0 600 400">
@@ -503,22 +628,19 @@ Do not use markdown formatting, bullet points, or special characters.
       <text x="300" y="293" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" font-weight="600" fill="${config.accentColor}">PREMIUM CONTENT</text>
       
       <rect x="0" y="390" width="600" height="10" fill="url(#accent)" opacity="0.8"/>
-    </svg>`;
+    </svg>`
 
     // Use proper URL encoding for the SVG
-    const encodedSvg = encodeURIComponent(svgContent);
-    const dataUrl = `data:image/svg+xml,${encodedSvg}`;
+    const encodedSvg = encodeURIComponent(svgContent)
+    const dataUrl = `data:image/svg+xml,${encodedSvg}`
 
-    console.log(`✅ Generated bulletproof SVG for ${category}`);
-    console.log(`🎨 Colors: ${config.primaryColor} → ${config.secondaryColor}`);
+    console.log(`✅ Generated bulletproof SVG for ${category}`)
+    console.log(`🎨 Colors: ${config.primaryColor} → ${config.secondaryColor}`)
 
-    return dataUrl;
+    return dataUrl
   }
 
-  private async createPremiumFallbackArticle(
-    category: string,
-    entity?: QlooEntity
-  ): Promise<NewsletterArticle> {
+  private async createPremiumFallbackArticle(category: string, entity?: QlooEntity): Promise<NewsletterArticle> {
     const categoryContent = {
       artists: {
         title: "The Evolution of Music in the Digital Age",
@@ -529,8 +651,7 @@ Social media platforms like TikTok have become the new radio, with 15-second cli
 The rise of playlist culture has also changed how we consume music. Curated playlists for every mood, activity, and moment have replaced traditional album listening experiences. This has influenced how artists structure their releases, with many opting for frequent single drops rather than full album cycles.
 
 Looking ahead, emerging technologies like AI-generated music and virtual concerts are poised to further revolutionize the industry. As artists continue to adapt to these changes, we can expect even more innovative approaches to music creation and distribution in the coming years.`,
-        imageQuery:
-          "music streaming digital transformation artist microphone studio modern",
+        imageQuery: "music streaming digital transformation artist microphone studio modern",
       },
       trends: {
         title: "Digital Culture Shapes Tomorrow's World",
@@ -541,8 +662,7 @@ The creator economy has emerged as a significant force, with individuals buildin
 Viral phenomena now spread across continents in hours, creating shared global experiences that unite diverse communities around common interests. From dance challenges to social movements, digital culture has proven its power to mobilize and inspire action on unprecedented scales.
 
 The intersection of technology and culture continues to evolve, with emerging platforms and tools constantly reshaping how we interact and express ourselves. As we move forward, understanding these digital cultural currents becomes essential for anyone seeking navigate our interconnected world.`,
-        imageQuery:
-          "digital culture social media technology viral trends modern colorful",
+        imageQuery: "digital culture social media technology viral trends modern colorful",
       },
       movies: {
         title: "Cinema's Renaissance in the Streaming Era",
@@ -553,8 +673,7 @@ Streaming services have also changed audience expectations, with viewers now acc
 The pandemic accelerated these changes, forcing the industry to reimagine release strategies and production methods. Simultaneous streaming and theatrical releases became the norm, while virtual film festivals opened new avenues for discovery and distribution.
 
 International content has found unprecedented success on global platforms, with non-English films and series achieving mainstream popularity. This cultural exchange has enriched the global entertainment landscape and created new opportunities for cross-cultural collaboration and understanding.`,
-        imageQuery:
-          "cinema movie theater film streaming platform popcorn premiere",
+        imageQuery: "cinema movie theater film streaming platform popcorn premiere",
       },
       books: {
         title: "The Literary Landscape in Digital Times",
@@ -565,8 +684,7 @@ E-books and audiobooks have expanded access to literature, making reading more c
 Self-publishing platforms have democratized the publishing process, allowing authors to reach readers directly without traditional gatekeepers. This has led to more diverse voices and genres finding their audiences, particularly in romance, fantasy, and other genre fiction categories.
 
 Book clubs and reading communities have flourished online, creating global conversations around literature that transcend geographical boundaries. These digital communities have become influential in shaping reading trends and supporting both established and emerging authors.`,
-        imageQuery:
-          "books literature reading library cozy aesthetic digital publishing",
+        imageQuery: "books literature reading library cozy aesthetic digital publishing",
       },
       tv_shows: {
         title: "Television's Golden Age Continues to Evolve",
@@ -577,16 +695,13 @@ The proliferation of streaming services has created intense competition for view
 International content has gained remarkable traction on global platforms, with series from Korea, Spain, Germany, and other countries achieving worldwide success. This cultural exchange has enriched the global television landscape and demonstrated the universal appeal of compelling storytelling.
 
 The binge-watching phenomenon has fundamentally changed how series are structured and consumed, with creators now able to craft longer narrative arcs and more complex character development. This shift has blurred the lines between television and cinema, creating new hybrid forms of entertainment.`,
-        imageQuery:
-          "television streaming TV show production set modern entertainment",
+        imageQuery: "television streaming TV show production set modern entertainment",
       },
-    };
+    }
 
-    const content =
-      categoryContent[category as keyof typeof categoryContent] ||
-      categoryContent.trends;
-    const wordCount = content.content.split(" ").length;
-    const readTime = Math.max(2, Math.ceil(wordCount / 200));
+    const content = categoryContent[category as keyof typeof categoryContent] || categoryContent.trends
+    const wordCount = content.content.split(" ").length
+    const readTime = Math.max(2, Math.ceil(wordCount / 200))
 
     return {
       title: content.title,
@@ -604,60 +719,45 @@ The binge-watching phenomenon has fundamentally changed how series are structure
         } as QlooEntity),
       read_time: `${readTime} min read`,
       tags: this.generateFallbackTags(category),
-    };
-  }
-
-  private generateExcerpt(content: string): string {
-    const sentences = content.split(". ");
-    const excerpt = sentences.slice(0, 2).join(". ");
-    return excerpt.length > 150
-      ? excerpt.substring(0, 147) + "..."
-      : excerpt + ".";
-  }
-
-  private generateTags(entity: QlooEntity, category: string): string[] {
-    const baseTags = [category, "trending", "culture"];
-
-    switch (category) {
-      case "artists":
-        return [...baseTags, "music", "entertainment", "streaming"];
-      case "trends":
-        return [...baseTags, "social media", "digital culture", "viral"];
-      case "movies":
-        return [...baseTags, "cinema", "film", "entertainment"];
-      case "books":
-        return [...baseTags, "literature", "reading", "publishing"];
-      case "tv_shows":
-        return [...baseTags, "television", "streaming", "series"];
-      default:
-        return baseTags;
     }
   }
 
-  private generateLocationTags(
-    entity: QlooEntity,
-    category: string,
-    location: string
-  ): string[] {
-    const baseTags = this.generateTags(entity, category);
-    return [
-      ...baseTags,
-      location.toLowerCase(),
-      "local trends",
-      "regional culture",
-    ];
+  private generateExcerpt(content: string): string {
+    const sentences = content.split(". ")
+    const excerpt = sentences.slice(0, 2).join(". ")
+    return excerpt.length > 150 ? excerpt.substring(0, 147) + "..." : excerpt + "."
+  }
+
+  private generateTags(entity: QlooEntity, category: string): string[] {
+    const baseTags = [category, "trending", "culture"]
+
+    switch (category) {
+      case "artists":
+        return [...baseTags, "music", "entertainment", "streaming"]
+      case "trends":
+        return [...baseTags, "social media", "digital culture", "viral"]
+      case "movies":
+        return [...baseTags, "cinema", "film", "entertainment"]
+      case "books":
+        return [...baseTags, "literature", "reading", "publishing"]
+      case "tv_shows":
+        return [...baseTags, "television", "streaming", "series"]
+      default:
+        return baseTags
+    }
+  }
+
+  private generateLocationTags(entity: QlooEntity, category: string, location: string): string[] {
+    const baseTags = this.generateTags(entity, category)
+    return [...baseTags, location.toLowerCase(), "local trends", "regional culture"]
   }
 
   private generateFallbackTags(category: string): string[] {
-    return this.generateTags({} as QlooEntity, category);
+    return this.generateTags({} as QlooEntity, category)
   }
 
-  private generatePremiumTitle(
-    name: string,
-    category: string,
-    affinityScore?: number
-  ): string {
-    const isHighAffinity = (affinityScore || 0) > 0.8;
+  private generatePremiumTitle(name: string, category: string, affinityScore?: number): string {
+    const isHighAffinity = (affinityScore || 0) > 0.8
 
     if (isHighAffinity) {
       const premiumTitles = {
@@ -691,15 +791,13 @@ The binge-watching phenomenon has fundamentally changed how series are structure
           `${name}: The Show Everyone's Binge-Watching Right Now`,
           `Inside ${name}: The Series That's Breaking All the Rules`,
         ],
-      };
+      }
 
-      const titles =
-        premiumTitles[category as keyof typeof premiumTitles] ||
-        premiumTitles.trends;
-      return titles[Math.floor(Math.random() * titles.length)];
+      const titles = premiumTitles[category as keyof typeof premiumTitles] || premiumTitles.trends
+      return titles[Math.floor(Math.random() * titles.length)]
     }
 
-    return this.generateTitle(name, category);
+    return this.generateTitle(name, category)
   }
 
   private generateLocationTitle(name: string, location: string): string {
@@ -708,39 +806,30 @@ The binge-watching phenomenon has fundamentally changed how series are structure
       `${name}'s Cultural Impact in ${location}`,
       `Why ${location} Can't Stop Talking About ${name}`,
       `${name}: The ${location} Cultural Phenomenon`,
-    ];
-    return templates[Math.floor(Math.random() * templates.length)];
+    ]
+    return templates[Math.floor(Math.random() * templates.length)]
   }
 
   // Keep all existing helper methods...
   private analyzeDemographics(demographics: any[]): string {
-    if (
-      !demographics ||
-      !Array.isArray(demographics) ||
-      demographics.length === 0
-    ) {
-      return "Appeals to a broad, diverse audience across multiple demographics and cultural segments.";
+    if (!demographics || !Array.isArray(demographics) || demographics.length === 0) {
+      return "Appeals to a broad, diverse audience across multiple demographics and cultural segments."
     }
 
     const topDemographics = demographics
       .filter((demo) => demo && typeof demo === "object" && demo.name)
       .sort((a, b) => (b.affinity_score || 0) - (a.affinity_score || 0))
-      .slice(0, 3);
+      .slice(0, 3)
 
     if (topDemographics.length === 0) {
-      return "Resonates strongly with diverse audience segments across various cultural and demographic groups.";
+      return "Resonates strongly with diverse audience segments across various cultural and demographic groups."
     }
 
     const insights = topDemographics.map(
-      (demo) =>
-        `${demo.name} (${Math.round(
-          (demo.affinity_score || 0) * 100
-        )}% affinity)`
-    );
+      (demo) => `${demo.name} (${Math.round((demo.affinity_score || 0) * 100)}% affinity)`,
+    )
 
-    return `Particularly resonates with: ${insights.join(
-      ", "
-    )}. This broad appeal demonstrates its cross-cultural significance.`;
+    return `Particularly resonates with: ${insights.join(", ")}. This broad appeal demonstrates its cross-cultural significance.`
   }
 
   private generateTitle(name: string, category: string): string {
@@ -775,57 +864,14 @@ The binge-watching phenomenon has fundamentally changed how series are structure
         `${name}: Why This Show is Breaking Records`,
         `The Cultural Impact of ${name}`,
       ],
-    };
+    }
 
-    const templates =
-      titleTemplates[category as keyof typeof titleTemplates] ||
-      titleTemplates.trends;
-    return templates[Math.floor(Math.random() * templates.length)];
+    const templates = titleTemplates[category as keyof typeof titleTemplates] || titleTemplates.trends
+    return templates[Math.floor(Math.random() * templates.length)]
   }
 
-  private createFallbackArticle(
-    entity: QlooEntity,
-    category: string
-  ): NewsletterArticle {
-    // Create a synchronous fallback article
-    const categoryContent = {
-      artists: {
-        title: "The Evolution of Music in the Digital Age",
-        content: `The music industry continues to undergo unprecedented transformation as digital platforms reshape how artists connect with audiences worldwide.`,
-      },
-      trends: {
-        title: "Digital Culture Shapes Tomorrow's World",
-        content: `We are witnessing a fundamental shift in how global culture is created, shared, and consumed.`,
-      },
-      movies: {
-        title: "Cinema's Renaissance in the Streaming Era",
-        content: `The film industry is experiencing a remarkable renaissance as streaming platforms invest billions in original content.`,
-      },
-      books: {
-        title: "The Literary Landscape in Digital Times",
-        content: `The publishing world is undergoing a digital transformation that's reshaping how we discover literature.`,
-      },
-      tv_shows: {
-        title: "Television's Golden Age Continues to Evolve",
-        content: `We are living through an unprecedented era of television excellence.`,
-      },
-    };
-
-    const content =
-      categoryContent[category as keyof typeof categoryContent] ||
-      categoryContent.trends;
-
-    return {
-      title: content.title,
-      content: content.content,
-      excerpt: content.content.substring(0, 150) + "...",
-      category: this.formatCategory(category),
-      image_url: this.generateReliableImage(category),
-      trending: true,
-      source_data: entity,
-      read_time: "2 min read",
-      tags: this.generateFallbackTags(category),
-    };
+  private createFallbackArticle(entity: QlooEntity, category: string): NewsletterArticle {
+    return this.createPremiumFallbackArticle(category, entity)
   }
 
   private cleanContent(content: string): string {
@@ -835,7 +881,7 @@ The binge-watching phenomenon has fundamentally changed how series are structure
       .replace(/\*/g, "")
       .replace(/\n\s*\n/g, "\n\n")
       .replace(/\n/g, "\n\n")
-      .trim();
+      .trim()
   }
 
   private formatCategory(category: string): string {
@@ -845,165 +891,14 @@ The binge-watching phenomenon has fundamentally changed how series are structure
       movies: "Cinema & Film",
       books: "Literature & Books",
       tv_shows: "Television & Streaming",
-    };
-    return categoryMap[category] || category;
+    }
+    return categoryMap[category] || category
   }
 
   // Legacy method for backward compatibility
-  async generateNewsletterContent(
-    categories: string[]
-  ): Promise<NewsletterArticle[]> {
-    return this.generatePersonalizedNewsletter(categories);
-  }
-
-  // Helper function to get the start of the current week (Monday)
-  private getCurrentWeekStart(): Date {
-    const now = new Date();
-    const day = now.getDay();
-    const diff = day === 0 ? -6 : 1 - day; // Monday is start of week
-    const monday = new Date(now.getTime() + diff * 24 * 60 * 60 * 1000);
-    monday.setHours(0, 0, 0, 0);
-    return monday;
-  }
-
-  // New methods that include database saving
-  async generateNewsletterContentWithDB(
-    categories: string[],
-    weekOf?: string
-  ): Promise<{ articles: NewsletterArticle[]; newsletter: any }> {
-    const articles = await this.generatePersonalizedNewsletter(categories);
-    const newsletter = await this.saveNewsletterToDB(
-      articles,
-      categories,
-      "standard",
-      weekOf
-    );
-    return { articles, newsletter };
-  }
-
-  async generatePersonalizedNewsletterWithDB(
-    categories: string[],
-    userPreferences?: UserPreferences,
-    weekOf?: string
-  ): Promise<{ articles: NewsletterArticle[]; newsletter: any }> {
-    const articles = await this.generatePersonalizedNewsletter(
-      categories,
-      userPreferences
-    );
-    const newsletter = await this.saveNewsletterToDB(
-      articles,
-      categories,
-      "personalized",
-      weekOf,
-      userPreferences
-    );
-    return { articles, newsletter };
-  }
-
-  async generateLocationBasedNewsletterWithDB(
-    location: string,
-    categories: string[],
-    weekOf?: string
-  ): Promise<{ articles: NewsletterArticle[]; newsletter: any }> {
-    const articles = await this.generateLocationBasedNewsletter(
-      location,
-      categories
-    );
-    const newsletter = await this.saveNewsletterToDB(
-      articles,
-      categories,
-      "location-based",
-      weekOf,
-      undefined,
-      location
-    );
-    return { articles, newsletter };
-  }
-
-  // Save newsletter to database
-  private async saveNewsletterToDB(
-    articles: NewsletterArticle[],
-    categories: string[],
-    generationType: string,
-    weekOf?: string,
-    userPreferences?: UserPreferences,
-    location?: string
-  ): Promise<any> {
-    try {
-      console.log("💾 Saving newsletter to database...");
-
-      const targetWeek = weekOf ? new Date(weekOf) : this.getCurrentWeekStart();
-      const sortedCategories = [...categories].sort();
-
-      // Check if newsletter already exists
-      let newsletter = await prisma.newsletter.findFirst({
-        where: {
-          weekOf: targetWeek,
-          categories: {
-            equals: sortedCategories,
-          },
-        },
-      });
-
-      if (newsletter) {
-        console.log(
-          `📰 Newsletter already exists in database with ID: ${newsletter.id}`
-        );
-        return {
-          id: newsletter.id,
-          title: newsletter.title,
-          subtitle: newsletter.subtitle,
-          weekOf: newsletter.weekOf,
-          categories: newsletter.categories,
-          isExisting: true,
-        };
-      }
-
-      // Generate HTML content
-      const htmlContent = generateNewsletterEmailHTML(
-        articles,
-        "Newsletter Subscriber"
-      );
-
-      // Create title and subtitle
-      let title = `Qloo Trends Weekly - ${targetWeek.toLocaleDateString()}`;
-      let subtitle = `Your ${generationType} insights`;
-
-      if (location) {
-        subtitle += ` for ${location}`;
-      } else if (generationType === "personalized") {
-        subtitle += ` based on your preferences`;
-      } else {
-        subtitle += ` for ${categories.join(", ")}`;
-      }
-
-      // Create new newsletter
-      newsletter = await prisma.newsletter.create({
-        data: {
-          title,
-          subtitle,
-          weekOf: targetWeek,
-          categories: sortedCategories,
-          articles: articles as any, // Store as JSON
-          htmlContent: htmlContent,
-        },
-      });
-
-      console.log(`✅ Newsletter saved to database with ID: ${newsletter.id}`);
-
-      return {
-        id: newsletter.id,
-        title: newsletter.title,
-        subtitle: newsletter.subtitle,
-        weekOf: newsletter.weekOf,
-        categories: newsletter.categories,
-        isExisting: false,
-      };
-    } catch (error) {
-      console.error("❌ Error saving newsletter to database:", error);
-      throw error;
-    }
+  async generateNewsletterContent(categories: string[]): Promise<NewsletterArticle[]> {
+    return this.generatePersonalizedNewsletter(categories)
   }
 }
 
-export const newsletterGenerator = new NewsletterGenerator();
+export const newsletterGenerator = new NewsletterGenerator()

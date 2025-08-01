@@ -345,7 +345,8 @@ export function generateNewsletterEmailHTML(articles: NewsletterArticle[], subsc
                     <a href="#preferences">Update Preferences</a> | 
                     <a href="#support">Support</a>
                 </p>
-                <p>© 2024 Qloo Trends Newsletter. All rights reserved.</p>
+               <p>© {new Date().getFullYear()} Qloo Trends Newsletter. All rights reserved.</p>
+
             </div>
         </div>
     </div>

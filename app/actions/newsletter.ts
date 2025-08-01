@@ -2,10 +2,10 @@
 
 import { z } from "zod"
 
-const subscriptionSchema = z.object({
+const subscribeSchema = z.object({
   email: z.string().email("Invalid email address"),
   name: z.string().optional(),
-  categories: z.array(z.string()).min(1, "Please select at least one category"),
+  categories: z.array(z.string()).min(1, "At least one category must be selected"),
 })
 
 export async function subscribeToNewsletter(prevState: any, formData: FormData) {
@@ -14,34 +14,54 @@ export async function subscribeToNewsletter(prevState: any, formData: FormData) 
     const name = formData.get("name") as string
     const categories = formData.getAll("categories") as string[]
 
-    const validatedData = subscriptionSchema.parse({
+    // Validate the data
+    const validatedData = subscribeSchema.parse({
       email,
       name: name || undefined,
       categories,
     })
 
-    // Here you would typically save to database
-    // For demo purposes, we'll simulate the subscription
-    await new Promise((resolve) => setTimeout(resolve, 1000))
+    console.log("📝 Newsletter subscription:", validatedData)
 
-    // In a real app, you'd also trigger the first newsletter generation
-    console.log("New subscription:", validatedData)
+    // Call the optimized newsletter API
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/api/send-test-newsletter-optimized`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(validatedData),
+      },
+    )
 
-    return {
-      success: true,
-      message: "Successfully subscribed! You'll receive your first newsletter soon.",
+    const result = await response.json()
+
+    if (response.ok && result.success) {
+      return {
+        success: true,
+        message: result.message || "Successfully subscribed! Check your email.",
+        data: result,
+      }
+    } else {
+      return {
+        success: false,
+        message: result.error || "Failed to subscribe. Please try again.",
+      }
     }
   } catch (error) {
+    console.error("Newsletter subscription error:", error)
+
     if (error instanceof z.ZodError) {
       return {
         success: false,
-        message: error.errors[0].message,
+        message: error.errors[0]?.message || "Invalid input data",
       }
     }
 
     return {
       success: false,
-      message: "Something went wrong. Please try again.",
+      message: "An error occurred. Please try again later.",
     }
   }
 }

@@ -1,223 +1,179 @@
-import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
-import { prisma } from "@/lib/prisma";
-import { emailService } from "@/lib/email-service";
-import { newsletterService } from "@/lib/newsletter-service";
-
-const subscriptionSchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  email: z.string().email("Invalid email format"),
-  categories: z.array(z.string()).min(1, "At least one category is required"),
-});
+import { type NextRequest, NextResponse } from "next/server"
+import { newsletterGenerator } from "@/lib/newsletter-generator"
+import { sendNewsletterEmail, getEmailServiceStatus } from "@/lib/email-sender"
+import { prisma } from "@/lib/prisma"
 
 export async function POST(request: NextRequest) {
   try {
-    console.log("📝 Processing newsletter subscription...");
+    const { email, name, categories } = await request.json()
 
-    // Parse and validate request body
-    const body = await request.json();
-    const validatedData = subscriptionSchema.parse(body);
+    if (!email) {
+      return NextResponse.json({ error: "Email address is required" }, { status: 400 })
+    }
 
-    console.log(
-      `👤 New subscription: ${
-        validatedData.email
-      }, categories: ${validatedData.categories.join(", ")}`
-    );
+    if (!categories || !Array.isArray(categories) || categories.length === 0) {
+      return NextResponse.json({ error: "At least one category must be selected" }, { status: 400 })
+    }
 
-    // Check if user already exists
-    let user = await prisma.user.findUnique({
-      where: { email: validatedData.email },
-      include: {
-        categories: {
-          include: {
-            category: true,
-          },
-        },
+    console.log(`📧 Processing optimized newsletter subscription for: ${email}`)
+    console.log(`📂 Categories: ${categories.join(", ")}`)
+
+    // Step 1: Create or update user
+    const user = await prisma.user.upsert({
+      where: { email },
+      update: {
+        name: name || undefined,
+        updatedAt: new Date(),
       },
-    });
+      create: {
+        email,
+        name: name || undefined,
+      },
+    })
 
-    if (user) {
-      console.log(`✅ User already exists: ${user.email}`);
+    console.log(`👤 User ${user.id} (${user.email}) ${user.createdAt === user.updatedAt ? "created" : "updated"}`)
 
-      // Update user's categories if different
-      const existingCategories = user.categories
-        .map((uc: any) => uc.category.name)
-        .sort();
-      const newCategories = [...validatedData.categories].sort();
+    // Step 2: Deduplicate categories and ensure all categories exist
+    const uniqueCategories = [...new Set(categories)] // Remove duplicates
+    console.log(`📂 Unique Categories: ${uniqueCategories.join(", ")}`)
 
-      if (
-        JSON.stringify(existingCategories) !== JSON.stringify(newCategories)
-      ) {
-        console.log("🔄 Updating user categories...");
-
-        // Remove old category associations
-        await prisma.userCategory.deleteMany({
-          where: { userId: user.id },
-        });
-
-        // Add new category associations
-        for (const categoryName of validatedData.categories) {
-          const category = await prisma.category.upsert({
-            where: { name: categoryName },
-            update: {},
-            create: {
-              name: categoryName,
-              label:
-                categoryName.charAt(0).toUpperCase() + categoryName.slice(1),
-            },
-          });
-
-          await prisma.userCategory.create({
-            data: {
-              userId: user.id,
-              categoryId: category.id,
-            },
-          });
-        }
-
-        // Refresh user data
-        user = await prisma.user.findUnique({
-          where: { id: user.id },
-          include: {
-            categories: {
-              include: {
-                category: true,
-              },
-            },
-          },
-        });
-      }
-    } else {
-      console.log("🆕 Creating new user...");
-
-      // Create new user
-      user = await prisma.user.create({
-        data: {
-          name: validatedData.name,
-          email: validatedData.email,
+    const categoryRecords = []
+    for (const categoryName of uniqueCategories) {
+      // Create category if it doesn't exist
+      const category = await prisma.category.upsert({
+        where: { name: categoryName },
+        update: {},
+        create: {
+          name: categoryName,
+          label: formatCategoryLabel(categoryName), // Add the required label field
         },
-        include: {
-          categories: {
-            include: {
-              category: true,
-            },
-          },
-        },
-      });
+      })
 
-      // Add category associations
-      for (const categoryName of validatedData.categories) {
-        const category = await prisma.category.upsert({
-          where: { name: categoryName },
-          update: {},
-          create: {
-            name: categoryName,
-            label: categoryName.charAt(0).toUpperCase() + categoryName.slice(1),
-          },
-        });
+      categoryRecords.push(category)
 
-        await prisma.userCategory.create({
-          data: {
+      // Create or update user-category relationship using upsert
+      await prisma.userCategory.upsert({
+        where: {
+          userId_categoryId: {
             userId: user.id,
             categoryId: category.id,
           },
-        });
-      }
-
-      // Refresh user data with categories
-      user = await prisma.user.findUnique({
-        where: { id: user.id },
-        include: {
-          categories: {
-            include: {
-              category: true,
-            },
-          },
         },
-      });
+        update: {
+          // Update timestamp to show renewed interest
+          createdAt: new Date(),
+        },
+        create: {
+          userId: user.id,
+          categoryId: category.id,
+        },
+      })
     }
 
-    if (!user) {
-      throw new Error("Failed to create or retrieve user");
+    console.log(`✅ User-category relationships established for ${categoryRecords.length} categories`)
+
+    // Step 3: Generate or get newsletter for this week
+    const result = await newsletterGenerator.generateNewsletterContentWithDB(uniqueCategories)
+
+    if (result.articles.length === 0) {
+      return NextResponse.json({ error: "Failed to generate newsletter content" }, { status: 500 })
     }
 
-    console.log("📰 Getting newsletter for user...");
+    console.log(`📰 Newsletter ready: ${result.newsletter.id} with ${result.articles.length} articles`)
 
-    // Get or create newsletter for user's categories using the service
-    const { newsletter, htmlContent } =
-      await newsletterService.getUserNewsletter(user.id);
-
-    console.log(`✅ Newsletter ready: ${newsletter.title}`);
-
-    // Check if we already sent this newsletter to this user
-    const alreadySent = await newsletterService.wasNewsletterSent(
-      user.id,
-      newsletter.id
-    );
+    // Step 4: Check if we already sent this newsletter to this user
+    const alreadySent = await prisma.newsletterSent.findUnique({
+      where: {
+        userId_newsletterId: {
+          userId: user.id,
+          newsletterId: result.newsletter.id,
+        },
+      },
+    })
 
     if (alreadySent) {
-      console.log("⚠️  Newsletter already sent to this user this week");
+      console.log(`⚠️ Newsletter ${result.newsletter.id} already sent to user ${user.id} on ${alreadySent.sentAt}`)
       return NextResponse.json({
         success: true,
-        message:
-          "Subscription confirmed! You've already received this week's newsletter.",
+        message: `Welcome back! You've already received this week's newsletter. Check your email from ${alreadySent.sentAt.toLocaleDateString()}.`,
+        newsletter: {
+          id: result.newsletter.id,
+          title: result.newsletter.title,
+          alreadySent: true,
+          sentAt: alreadySent.sentAt,
+        },
+        articles_count: result.articles.length,
         user: {
           id: user.id,
-          name: user.name,
           email: user.email,
-          categories: user.categories.map((uc: any) => uc.category.name),
+          isExisting: user.createdAt !== user.updatedAt,
         },
-        newsletter: {
-          id: newsletter.id,
-          title: newsletter.title,
-          alreadySent: true,
-        },
-      });
+        email_service: getEmailServiceStatus(),
+      })
     }
 
-    // Send welcome email with newsletter
-    console.log("📧 Sending welcome email...");
+    // Step 5: Send email - always works (real or simulation)
+    const emailStatus = getEmailServiceStatus()
+    console.log(`📬 Email mode: ${emailStatus.mode}`)
 
-    await emailService.sendEmail({
-      to: user.email,
-      subject: newsletter.title,
-      html: htmlContent,
-    });
+    const emailSent = await sendNewsletterEmail({
+      to: email,
+      subject: result.newsletter.title,
+      html: result.newsletter.htmlContent,
+    })
 
-    // Mark newsletter as sent
-    await newsletterService.markNewsletterSent(user.id, newsletter.id);
+    if (!emailSent) {
+      return NextResponse.json({ error: "Failed to send email" }, { status: 500 })
+    }
 
-    console.log("🎉 Newsletter subscription and email sent successfully!");
+    // Step 6: Mark newsletter as sent
+    await prisma.newsletterSent.create({
+      data: {
+        userId: user.id,
+        newsletterId: result.newsletter.id,
+        sentAt: new Date(),
+      },
+    })
+
+    console.log(`✅ Newsletter sent successfully to ${email}`)
 
     return NextResponse.json({
       success: true,
-      message:
-        "Subscription successful! Check your email for the latest newsletter.",
+      message: emailStatus.hasApiKey
+        ? `🎉 Newsletter "${result.newsletter.title}" sent to ${email}!`
+        : `🎉 Newsletter "${result.newsletter.title}" generated! (Email simulation mode - check console for content)`,
+      newsletter: {
+        id: result.newsletter.id,
+        title: result.newsletter.title,
+        subtitle: result.newsletter.subtitle,
+        weekOf: result.newsletter.weekOf,
+        categories: result.newsletter.categories,
+        isExisting: result.newsletter.isExisting,
+      },
+      articles_count: result.articles.length,
       user: {
         id: user.id,
-        name: user.name,
         email: user.email,
-        categories: user.categories.map((uc: any) => uc.category.name),
+        name: user.name,
+        isExisting: user.createdAt !== user.updatedAt,
       },
-      newsletter: {
-        id: newsletter.id,
-        title: newsletter.title,
-        articlesCount: Array.isArray(newsletter.articles)
-          ? newsletter.articles.length
-          : 0,
-      },
-    });
+      email_service: emailStatus,
+      sent_at: new Date().toISOString(),
+    })
   } catch (error) {
-    console.error("❌ Newsletter subscription failed:", error);
+    console.error("❌ Error in optimized newsletter subscription:", error)
 
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        {
-          error: "Validation failed",
-          details: error.errors,
-        },
-        { status: 400 }
-      );
+    // Provide more specific error messages
+    if (error instanceof Error) {
+      if (error.message.includes("Unique constraint")) {
+        return NextResponse.json(
+          {
+            error: "Subscription already exists",
+            details: "You're already subscribed with these categories. Check your email for recent newsletters.",
+          },
+          { status: 409 },
+        )
+      }
     }
 
     return NextResponse.json(
@@ -225,7 +181,59 @@ export async function POST(request: NextRequest) {
         error: "Failed to process newsletter subscription",
         details: error instanceof Error ? error.message : "Unknown error",
       },
-      { status: 500 }
-    );
+      { status: 500 },
+    )
   }
+}
+
+function formatCategoryLabel(categoryName: string): string {
+  const labelMap: Record<string, string> = {
+    artists: "Artists & Musicians",
+    trends: "Cultural Trends",
+    movies: "Movies & TV",
+    books: "Books & Literature",
+    tv_shows: "Television & Streaming",
+  }
+
+  return labelMap[categoryName] || categoryName.charAt(0).toUpperCase() + categoryName.slice(1)
+}
+
+export async function GET() {
+  const emailStatus = getEmailServiceStatus()
+
+  return NextResponse.json({
+    message: "Optimized Newsletter Subscription API with Database Integration",
+    email_service: emailStatus,
+    features: [
+      "User management with upsert operations",
+      "Category management and user-category relationships",
+      "Newsletter generation with database caching",
+      "Duplicate prevention for newsletters",
+      "Email delivery with HTML templates",
+      "Comprehensive error handling",
+      "Subscription status tracking",
+      emailStatus.available ? "Real email delivery via Resend" : "Email simulation mode (no RESEND_API_KEY)",
+    ],
+    endpoints: {
+      subscribe: "POST /api/send-test-newsletter-optimized",
+    },
+    request_body: {
+      email: "string - Required email address",
+      name: "string - Optional user name",
+      categories: "string[] - Required array of category names",
+    },
+    response: {
+      success: "boolean",
+      message: "string - User-friendly message",
+      newsletter: "object - Newsletter details",
+      articles_count: "number - Number of articles generated",
+      user: "object - User information",
+      email_service: "object - Email service status",
+      sent_at: "string - ISO timestamp",
+    },
+    setup_instructions: {
+      real_email: "Add RESEND_API_KEY environment variable to enable real email delivery",
+      test_mode: "Without RESEND_API_KEY, system runs in simulation mode",
+    },
+  })
 }

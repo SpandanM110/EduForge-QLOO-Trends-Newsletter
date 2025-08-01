@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { ArrowLeft, Music, Film, TrendingUp, Book, Tv, AlertCircle } from "lucide-react"
+import { ArrowLeft, Music, Film, TrendingUp, Book, Tv, AlertCircle, Loader2 } from "lucide-react"
 import { useRouter } from "next/navigation"
 
 interface NewsletterArticle {
@@ -29,49 +29,95 @@ export default function PreviewArticleReaderPage({
   const [articles, setArticles] = useState<NewsletterArticle[]>([])
   const [articleIndex, setArticleIndex] = useState<number>(0)
   const [isFromCache, setIsFromCache] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const router = useRouter()
 
   useEffect(() => {
-    const loadFromCache = async () => {
-      const resolvedParams = await params
-      const index = Number.parseInt(resolvedParams.index)
-      setArticleIndex(index)
-
-      console.log(`🔍 Loading article ${index} from cache...`)
-
-      // ONLY use cached articles - never fetch fresh content
+    const loadArticle = async () => {
       try {
+        setIsLoading(true)
+        setError(null)
+
+        const resolvedParams = await params
+        const index = Number.parseInt(resolvedParams.index)
+        setArticleIndex(index)
+
+        console.log(`🔍 Loading article ${index}...`)
+
+        // First, try to load from cache
         const cachedArticles = sessionStorage.getItem("preview-articles")
         const cachedTimestamp = sessionStorage.getItem("preview-articles-timestamp")
 
         if (cachedArticles) {
-          const parsedArticles = JSON.parse(cachedArticles)
-          console.log(`✅ Found ${parsedArticles.length} cached articles`)
+          try {
+            const parsedArticles = JSON.parse(cachedArticles)
+            console.log(`✅ Found ${parsedArticles.length} cached articles`)
 
-          setArticles(parsedArticles)
-          setIsFromCache(true)
+            setArticles(parsedArticles)
+            setIsFromCache(true)
 
-          if (parsedArticles[index]) {
-            setArticle(parsedArticles[index])
-            console.log(`✅ Loaded article: "${parsedArticles[index].title}"`)
-            console.log(`📅 Cache timestamp: ${cachedTimestamp || "Unknown"}`)
+            if (parsedArticles[index]) {
+              setArticle(parsedArticles[index])
+              console.log(`✅ Loaded cached article: "${parsedArticles[index].title}"`)
+              setIsLoading(false)
+              return
+            }
+          } catch (cacheError) {
+            console.log("⚠️ Error parsing cached articles:", cacheError)
+          }
+        }
+
+        // If no cached data or article not found, generate fresh content
+        console.log("🔄 No cached data found, generating fresh newsletter content...")
+
+        const response = await fetch("/api/preview-newsletter", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            categories: ["artists", "trends", "movies"], // Default categories
+          }),
+        })
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch newsletter: ${response.status}`)
+        }
+
+        const data = await response.json()
+
+        if (data.success && data.articles && data.articles.length > 0) {
+          console.log(`✅ Generated ${data.articles.length} fresh articles`)
+
+          // Cache the fresh articles
+          sessionStorage.setItem("preview-articles", JSON.stringify(data.articles))
+          sessionStorage.setItem("preview-articles-timestamp", new Date().toISOString())
+
+          setArticles(data.articles)
+          setIsFromCache(false)
+
+          if (data.articles[index]) {
+            setArticle(data.articles[index])
+            console.log(`✅ Loaded fresh article: "${data.articles[index].title}"`)
           } else {
-            console.log(`❌ Article ${index} not found in cache`)
-            setArticle(null)
+            // If requested index doesn't exist, show the first article
+            setArticle(data.articles[0])
+            setArticleIndex(0)
+            console.log(`⚠️ Article ${index} not found, showing first article instead`)
           }
         } else {
-          console.log("❌ No cached articles found")
-          setArticle(null)
-          setIsFromCache(false)
+          throw new Error("No articles found in response")
         }
       } catch (error) {
-        console.error("❌ Error loading cached articles:", error)
-        setArticle(null)
-        setIsFromCache(false)
+        console.error("❌ Error loading article:", error)
+        setError(error instanceof Error ? error.message : "Failed to load article")
+      } finally {
+        setIsLoading(false)
       }
     }
 
-    loadFromCache()
+    loadArticle()
   }, [params])
 
   const getCategoryIcon = (category: string) => {
@@ -96,28 +142,41 @@ export default function PreviewArticleReaderPage({
     }
   }
 
-  // Show error state if no cached article found
-  if (!article) {
+  // Loading state
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-white">
         <div className="container mx-auto px-4 py-8">
-          <Card className="border-orange-200 bg-orange-50">
+          <Card className="border-blue-200 bg-blue-50">
             <CardContent className="p-8 text-center">
-              <AlertCircle className="h-12 w-12 text-orange-500 mx-auto mb-4" />
-              <h2 className="text-xl font-semibold text-orange-800 mb-2">Article Not Available</h2>
-              <p className="text-orange-700 mb-6">
-                {isFromCache
-                  ? `Article ${articleIndex} was not found in the cached preview content.`
-                  : "This article can only be viewed after loading the newsletter preview first."}
-              </p>
+              <Loader2 className="h-12 w-12 text-blue-500 mx-auto mb-4 animate-spin" />
+              <h2 className="text-xl font-semibold text-blue-800 mb-2">Loading Article...</h2>
+              <p className="text-blue-700">{isFromCache ? "Loading from cache..." : "Generating fresh content..."}</p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    )
+  }
+
+  // Error state
+  if (error || !article) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-white">
+        <div className="container mx-auto px-4 py-8">
+          <Card className="border-red-200 bg-red-50">
+            <CardContent className="p-8 text-center">
+              <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+              <h2 className="text-xl font-semibold text-red-800 mb-2">Unable to Load Article</h2>
+              <p className="text-red-700 mb-6">{error || "Article content could not be loaded at this time."}</p>
               <div className="space-y-4">
-                <Button onClick={() => router.push("/")} className="bg-orange-600 hover:bg-orange-700">
+                <Button onClick={() => window.location.reload()} className="bg-red-600 hover:bg-red-700">
+                  Try Again
+                </Button>
+                <Button onClick={() => router.push("/")} variant="outline">
                   <ArrowLeft className="h-4 w-4 mr-2" />
                   Go to Newsletter Preview
                 </Button>
-                <p className="text-sm text-orange-600">
-                  💡 Tip: Load the newsletter preview first, then click "Full Screen" to read articles
-                </p>
               </div>
             </CardContent>
           </Card>
@@ -137,8 +196,12 @@ export default function PreviewArticleReaderPage({
           </Button>
 
           {/* Cache indicator */}
-          <div className="text-xs text-green-600 bg-green-50 px-3 py-1 rounded-full inline-block">
-            ✅ Viewing cached content from preview (no regeneration)
+          <div
+            className={`text-xs px-3 py-1 rounded-full inline-block ${
+              isFromCache ? "text-green-600 bg-green-50" : "text-blue-600 bg-blue-50"
+            }`}
+          >
+            {isFromCache ? "✅ Viewing cached content from preview" : "🆕 Fresh content generated"}
           </div>
         </div>
 
@@ -155,7 +218,7 @@ export default function PreviewArticleReaderPage({
                 <Badge variant="outline">{Math.round(article.affinity_score * 100)}% Affinity</Badge>
               )}
               <Badge variant="outline" className="bg-blue-50 text-blue-700">
-                {article.read_time}
+                {article.read_time || "3 min read"}
               </Badge>
             </div>
 
@@ -189,6 +252,10 @@ export default function PreviewArticleReaderPage({
                   src={article.image_url || "/placeholder.svg"}
                   alt={article.title}
                   className="w-full h-96 rounded-lg object-cover shadow-lg"
+                  onError={(e) => {
+                    // Hide image if it fails to load
+                    e.currentTarget.style.display = "none"
+                  }}
                 />
               </div>
             )}
@@ -213,7 +280,7 @@ export default function PreviewArticleReaderPage({
             {/* Navigation to other articles */}
             {articles.length > 1 && (
               <div className="mt-8 pt-6 border-t">
-                <h4 className="font-semibold mb-4">Other Articles in This Preview ({articles.length} total)</h4>
+                <h4 className="font-semibold mb-4">Other Articles in This Newsletter ({articles.length} total)</h4>
                 <div className="grid gap-3">
                   {articles.map((otherArticle, index) => (
                     <div
@@ -238,7 +305,9 @@ export default function PreviewArticleReaderPage({
                               {getCategoryIcon(otherArticle.category)}
                               {otherArticle.category}
                             </Badge>
-                            <span className="text-xs text-muted-foreground">{otherArticle.read_time}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {otherArticle.read_time || "3 min read"}
+                            </span>
                             {index === articleIndex && (
                               <span className="text-xs text-blue-600 font-medium">Currently Reading</span>
                             )}

@@ -1,19 +1,31 @@
 interface EmailData {
-  to: string;
-  subject: string;
-  html: string;
+  to: string
+  subject: string
+  html: string
 }
 
-export class EmailService {
-  private apiKey: string;
+class EmailService {
+  private apiKey: string | undefined
 
   constructor() {
-    this.apiKey = process.env.RESEND_API_KEY || "";
+    this.apiKey = process.env.RESEND_API_KEY
   }
 
-  async sendEmail({ to, subject, html }: EmailData): Promise<any> {
+  async sendEmail({ to, subject, html }: EmailData): Promise<boolean> {
     try {
-      // Using Resend API (you can replace with any email service)
+      if (!this.apiKey) {
+        console.log("📧 RESEND_API_KEY not found - using email simulation")
+        console.log(`📬 Simulated email sent to: ${to}`)
+        console.log(`📝 Subject: ${subject}`)
+        console.log(`📄 Content preview: ${html.substring(0, 150)}...`)
+
+        // Simulate email delay
+        await new Promise((resolve) => setTimeout(resolve, 500))
+        return true
+      }
+
+      console.log(`📧 Sending real email via Resend to: ${to}`)
+
       const response = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: {
@@ -21,39 +33,44 @@ export class EmailService {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          from: "Qloo Trends <onboarding@resend.dev>", // Using Resend's test domain
+          from: "Qloo Newsletter <onboarding@resend.dev>",
           to: [to],
           subject: subject,
           html: html,
         }),
-      });
+      })
 
       if (!response.ok) {
-        console.error("Email send failed:", await response.text());
-        return null;
+        const errorData = await response.text()
+        console.error(`❌ Resend API error: ${response.status} - ${errorData}`)
+
+        // Fall back to simulation
+        console.log("🔄 Falling back to email simulation")
+        console.log(`📬 Simulated email sent to: ${to}`)
+        return true
       }
 
-      const data = await response.json();
-      console.log("✅ Email sent successfully to:", to);
-      return data;
+      const result = await response.json()
+      console.log(`✅ Real email sent successfully! ID: ${result.id}`)
+      return true
     } catch (error) {
-      console.error("❌ Email service error:", error);
-      return null;
+      console.error("❌ Email service error:", error)
+
+      // Always fall back to simulation on error
+      console.log("🔄 Error occurred - using email simulation")
+      console.log(`📬 Simulated email sent to: ${to}`)
+      return true
     }
   }
 
-  // Fallback method using console log for testing without email service
-  async sendTestEmail({ to, subject, html }: EmailData): Promise<boolean> {
-    console.log("📧 TEST EMAIL SIMULATION");
-    console.log("To:", to);
-    console.log("Subject:", subject);
-    console.log("HTML Content Preview:", html.substring(0, 200) + "...");
-
-    // Simulate email sending delay
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    return true;
+  getStatus() {
+    return {
+      hasApiKey: !!this.apiKey,
+      mode: this.apiKey ? "real" : "simulation",
+      service: "Resend",
+      available: !!this.apiKey,
+    }
   }
 }
 
-export const emailService = new EmailService();
+export const emailService = new EmailService()

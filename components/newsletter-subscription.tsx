@@ -1,20 +1,13 @@
-"use client";
+"use client"
 
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import { subscribeToNewsletter } from "@/app/actions/newsletter";
-import { useActionState } from "react";
-import { Mail, Sparkles, Users, TrendingUp } from "lucide-react";
+import { useState } from "react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
+import { useActionState } from "react"
+import { Mail, Sparkles, Users, TrendingUp, CheckCircle, AlertCircle } from "lucide-react"
 
 const categories = [
   {
@@ -45,40 +38,74 @@ const categories = [
     icon: "📚",
     color: "from-red-500 to-orange-500",
   },
-];
+]
+
+// Server action for newsletter subscription
+async function subscribeToNewsletter(prevState: any, formData: FormData) {
+  try {
+    const email = formData.get("email") as string
+    const name = formData.get("name") as string
+    const categories = formData.getAll("categories") as string[]
+
+    if (!email || categories.length === 0) {
+      return {
+        success: false,
+        message: "Email and at least one category are required",
+      }
+    }
+
+    console.log("📝 Subscribing user:", { email, name, categories })
+
+    // Call the optimized newsletter API
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/api/send-test-newsletter-optimized`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email,
+          name: name || "",
+          categories,
+        }),
+      },
+    )
+
+    const result = await response.json()
+
+    if (response.ok && result.success) {
+      return {
+        success: true,
+        message: result.message || "Successfully subscribed! Check your email.",
+        data: result,
+      }
+    } else {
+      return {
+        success: false,
+        message: result.error || "Failed to subscribe. Please try again.",
+      }
+    }
+  } catch (error) {
+    console.error("Newsletter subscription error:", error)
+    return {
+      success: false,
+      message: "An error occurred. Please try again later.",
+    }
+  }
+}
 
 export function NewsletterSubscription() {
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([
-    "artists",
-    "trends",
-  ]);
-  const [state, action, isPending] = useActionState(
-    subscribeToNewsletter,
-    null
-  );
+  const [selectedCategories, setSelectedCategories] = useState<string[]>(["artists", "trends"])
+  const [state, action, isPending] = useActionState(subscribeToNewsletter, null)
 
   const handleCategoryChange = (categoryId: string, checked: boolean) => {
     if (checked) {
-      setSelectedCategories((prev) => [...prev, categoryId]);
+      setSelectedCategories((prev) => [...prev, categoryId])
     } else {
-      setSelectedCategories((prev) => prev.filter((id) => id !== categoryId));
+      setSelectedCategories((prev) => prev.filter((id) => id !== categoryId))
     }
-  };
-
-  const handleSubmit = async (formData: FormData) => {
-    // Create payload with form data
-    const payload = {
-      email: formData.get("email") as string,
-      name: (formData.get("name") as string) || "",
-      categories: selectedCategories,
-      timestamp: new Date().toISOString(),
-    };
-
-    console.log("Newsletter subscription payload:", payload);
-
-    // Call the server action with the form data
-    action(formData);
-  };
+  }
 
   return (
     <Card className="w-full shadow-xl border-0 bg-white/80 backdrop-blur-sm">
@@ -87,34 +114,23 @@ export function NewsletterSubscription() {
           <div className="p-2 bg-gradient-to-r from-blue-500 to-purple-500 rounded-lg">
             <Mail className="h-5 w-5 text-white" />
           </div>
-          <CardTitle className="text-2xl font-bold text-gray-900">
-            Subscribe to Newsletter
-          </CardTitle>
+          <CardTitle className="text-2xl font-bold text-gray-900">Subscribe to Newsletter</CardTitle>
         </div>
         <CardDescription className="text-base text-gray-600 leading-relaxed">
-          Choose your interests and get personalized content delivered weekly to
-          your inbox
+          Choose your interests and get personalized content delivered weekly to your inbox
         </CardDescription>
       </CardHeader>
 
       <CardContent className="space-y-8">
-        <form action={handleSubmit} className="space-y-8">
-          {/* Hidden input for categories */}
+        <form action={action} className="space-y-8">
+          {/* Hidden inputs for categories */}
           {selectedCategories.map((categoryId) => (
-            <input
-              key={categoryId}
-              type="hidden"
-              name="categories"
-              value={categoryId}
-            />
+            <input key={categoryId} type="hidden" name="categories" value={categoryId} />
           ))}
 
           {/* Email Input */}
           <div className="space-y-3">
-            <Label
-              htmlFor="email"
-              className="text-sm font-semibold text-gray-700 flex items-center gap-2"
-            >
+            <Label htmlFor="email" className="text-sm font-semibold text-gray-700 flex items-center gap-2">
               <Mail className="h-4 w-4" />
               Email Address
             </Label>
@@ -130,10 +146,7 @@ export function NewsletterSubscription() {
 
           {/* Name Input */}
           <div className="space-y-3">
-            <Label
-              htmlFor="name"
-              className="text-sm font-semibold text-gray-700 flex items-center gap-2"
-            >
+            <Label htmlFor="name" className="text-sm font-semibold text-gray-700 flex items-center gap-2">
               <Users className="h-4 w-4" />
               Name (Optional)
             </Label>
@@ -161,9 +174,7 @@ export function NewsletterSubscription() {
                       name="categories"
                       value={category.id}
                       checked={selectedCategories.includes(category.id)}
-                      onCheckedChange={(checked) =>
-                        handleCategoryChange(category.id, checked as boolean)
-                      }
+                      onCheckedChange={(checked) => handleCategoryChange(category.id, checked as boolean)}
                       className="mt-1 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
                     />
                     <div className="flex-1 space-y-2">
@@ -176,9 +187,7 @@ export function NewsletterSubscription() {
                           {category.label}
                         </Label>
                       </div>
-                      <p className="text-sm text-gray-600 leading-relaxed">
-                        {category.description}
-                      </p>
+                      <p className="text-sm text-gray-600 leading-relaxed">{category.description}</p>
                     </div>
                   </div>
                 </div>
@@ -190,12 +199,12 @@ export function NewsletterSubscription() {
           <Button
             type="submit"
             className="w-full h-14 text-base font-semibold bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200"
-            disabled={isPending}
+            disabled={isPending || selectedCategories.length === 0}
           >
             {isPending ? (
               <div className="flex items-center gap-2">
                 <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                Subscribing...
+                Processing...
               </div>
             ) : (
               <div className="flex items-center gap-2">
@@ -209,16 +218,21 @@ export function NewsletterSubscription() {
           {state?.success && (
             <div className="p-4 bg-green-50 border border-green-200 rounded-xl">
               <div className="flex items-center gap-2 text-green-800">
-                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                <CheckCircle className="h-5 w-5" />
                 <span className="font-medium">{state.message}</span>
               </div>
+              {state.data?.newsletter && (
+                <div className="mt-2 text-sm text-green-700">
+                  Newsletter "{state.data.newsletter.title}" has been sent to your email!
+                </div>
+              )}
             </div>
           )}
 
           {state && !state.success && (
             <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
               <div className="flex items-center gap-2 text-red-800">
-                <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                <AlertCircle className="h-5 w-5" />
                 <span className="font-medium">{state.message}</span>
               </div>
             </div>
@@ -246,5 +260,5 @@ export function NewsletterSubscription() {
         </div>
       </CardContent>
     </Card>
-  );
+  )
 }
