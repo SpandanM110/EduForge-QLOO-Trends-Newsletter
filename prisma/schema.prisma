@@ -1,9 +1,11 @@
-// This is your Prisma schema file,
+ // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
 
 generator client {
   provider = "prisma-client-js"
-  binaryTargets = ["native", "rhel-openssl-1.0.x"]
 }
 
 datasource db {
@@ -12,27 +14,34 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relationships
-  categories     UserCategory[]
+  id          String   @id @default(cuid())
+  email       String   @unique
+  name        String?  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Many-to-many relationship with categories
+  categories  UserCategory[]
+  
+  // Track newsletters sent to this user
   newslettersSent NewsletterSent[]
-
+  
   @@map("users")
 }
 
 model Category {
-  id    String @id @default(cuid())
-  name  String @unique
-  label String
-
-  // Relationships
-  users UserCategory[]
-
+  id          String   @id @default(cuid())
+  name        String   @unique
+  label       String
+  description String?
+  icon        String?
+  color       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Many-to-many relationship with users
+  users       UserCategory[]
+  
   @@map("categories")
 }
 
@@ -41,11 +50,10 @@ model UserCategory {
   userId     String
   categoryId String
   createdAt  DateTime @default(now())
-
-  // Relationships
-  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-
+  
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  
   @@unique([userId, categoryId])
   @@map("user_categories")
 }
@@ -54,30 +62,29 @@ model Newsletter {
   id          String   @id @default(cuid())
   title       String
   subtitle    String?
-  weekOf      DateTime
-  categories  String[] // JSON array of category names
-  articles    Json     // JSON array of article objects
-  htmlContent String   @db.Text
+  weekOf      DateTime // Week this newsletter covers
+  categories  String[] // Array of category names this newsletter covers
+  articles    Json     // Store articles as JSON
+  htmlContent String   @db.Text // Pre-generated HTML content
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-
-  // Relationships
-  sentTo NewsletterSent[]
-
+  
+  // Track which users received this newsletter
+  sentTo      NewsletterSent[]
+  
   @@unique([weekOf, categories])
   @@map("newsletters")
 }
 
 model NewsletterSent {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   userId       String
   newsletterId String
-  sentAt       DateTime @default(now())
-
-  // Relationships
-  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  newsletter Newsletter @relation(fields: [newsletterId], references: [id], onDelete: Cascade)
-
+  sentAt       DateTime  @default(now())
+  
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  newsletter   Newsletter @relation(fields: [newsletterId], references: [id], onDelete: Cascade)
+  
   @@unique([userId, newsletterId])
   @@map("newsletter_sent")
 }

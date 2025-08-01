@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { safeNewsletterGenerator } from "@/lib/newsletter-generator-safe"
+import { newsletterGenerator } from "@/lib/newsletter-generator"
 
 export async function GET() {
   try {
@@ -73,7 +73,7 @@ The intersection of technology and culture continues to evolve, with emerging pl
     const previewCategories = ["artists", "trends", "movies"]
 
     try {
-      const result = await safeNewsletterGenerator.generateNewsletterContentWithDB(previewCategories)
+      const result = await newsletterGenerator.generateNewsletterContentWithDB(previewCategories)
 
       console.log(`✅ Generated ${result.articles.length} preview articles`)
 
@@ -149,7 +149,7 @@ export async function POST(request: NextRequest) {
     console.log("🎯 Generating custom preview for categories:", categories)
 
     try {
-      const result = await safeNewsletterGenerator.generateNewsletterContentWithDB(categories)
+      const result = await newsletterGenerator.generateNewsletterContentWithDB(categories)
 
       return NextResponse.json({
         success: true,
