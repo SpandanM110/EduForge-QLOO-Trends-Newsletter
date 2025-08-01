@@ -23,6 +23,9 @@ A sophisticated AI-powered newsletter platform delivering personalized entertain
 * Fully personalized articles based on user preferences.
 * Supports categories like Music, Movies, TV, Books & Culture.
 
+<img width="1100" height="832" alt="Screenshot 2025-08-01 151647" src="https://github.com/user-attachments/assets/fef07d39-de66-43c9-948c-e3c41bd12a6c" />
+
+
 ### 📧 Advanced Email System
 
 * Responsive HTML templates with clean design.
@@ -236,17 +239,11 @@ npx prisma generate
 * Check `DATABASE_URL`
 * Run `prisma db push`
 
----
-
-## 🔗 Links
-
-* **Live App**: [https://your-demo-url.com](https://your-demo-url.com)
-* **Docs**: [https://docs.your-project.com](https://docs.your-project.com)
-* **Status**: [https://status.your-project.com](https://status.your-project.com)
-* **API**: [https://api.your-project.com](https://api.your-project.com)
 
 ---
 
-**Made with ❤️ for the Qloo Hackathon**
-
+### Made with ❤️ for the Qloo Hackathon  
 *Your entertainment trends, tailored and delivered.*
+
+Follow the creators on X:  
+[Spandan Mukherjee](https://x.com/spandan_twts) • [Tanish Parashar](https://x.com/ParasharTanish3)
