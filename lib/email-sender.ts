@@ -28,7 +28,7 @@ export async function sendNewsletterEmail({ to, subject, html }: EmailData): Pro
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: "Qloo Newsletter <onboarding@resend.dev>",
+        from: "Qloo Newsletter <hello@eduforge.live>",
         to: [to],
         subject: subject,
         html: html,
