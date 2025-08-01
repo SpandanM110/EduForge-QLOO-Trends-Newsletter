@@ -209,11 +209,6 @@ npx prisma generate
 
 ---
 
-## 👍 Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for full details.
-
----
 
 ## 📊 Performance
 
