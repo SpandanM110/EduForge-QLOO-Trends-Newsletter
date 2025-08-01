@@ -1,4 +1,8 @@
-# Qloo Newsletter System - Eduforge 🎵
+# Qloo Newsletter System - Eduforge 
+
+
+<img width="1897" height="575" alt="image" src="https://github.com/user-attachments/assets/cdb49059-f76c-4ead-a5fb-a5e00d28dfe2" />
+
 
 A sophisticated AI-powered newsletter platform delivering personalized entertainment and cultural insights, powered by Qloo's trend data and Google's Gemini AI.
 
