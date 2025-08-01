@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { newsletterGenerator } from "@/lib/newsletter-generator"
+import { safeNewsletterGenerator } from "@/lib/newsletter-generator-safe"
 import { sendNewsletterEmail, getEmailServiceStatus } from "@/lib/email-sender"
 import { prisma } from "@/lib/prisma"
 
@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
     console.log(`✅ User-category relationships established for ${categoryRecords.length} categories`)
 
     // Step 3: Generate or get newsletter for this week
-    const result = await newsletterGenerator.generateNewsletterContentWithDB(uniqueCategories)
+    const result = await safeNewsletterGenerator.generateNewsletterContentWithDB(uniqueCategories)
 
     if (result.articles.length === 0) {
       return NextResponse.json({ error: "Failed to generate newsletter content" }, { status: 500 })
@@ -140,8 +140,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       message: emailStatus.hasApiKey
-        ? `🎉 Newsletter "${result.newsletter.title}" sent to ${email}!`
-        : `🎉 Newsletter "${result.newsletter.title}" generated! (Email simulation mode - check console for content)`,
+        ? `🔥 EduForge Newsletter "${result.newsletter.title}" delivered to ${email}!`
+        : `🔥 EduForge Newsletter "${result.newsletter.title}" forged! (Email simulation mode - check console for content)`,
       newsletter: {
         id: result.newsletter.id,
         title: result.newsletter.title,

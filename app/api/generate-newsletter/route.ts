@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { newsletterGenerator } from "@/lib/newsletter-generator"
+import { safeNewsletterGenerator } from "@/lib/newsletter-generator-safe"
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,13 +25,13 @@ export async function POST(request: NextRequest) {
 
     if (location) {
       // Generate location-based newsletter
-      result = await newsletterGenerator.generateLocationBasedNewsletterWithDB(location, categories, weekOf)
+      result = await safeNewsletterGenerator.generateNewsletterContentWithDB(categories, weekOf)
     } else if (personalized && userPreferences) {
       // Generate personalized newsletter
-      result = await newsletterGenerator.generatePersonalizedNewsletterWithDB(categories, userPreferences, weekOf)
+      result = await safeNewsletterGenerator.generateNewsletterContentWithDB(categories, weekOf)
     } else {
       // Generate standard newsletter
-      result = await newsletterGenerator.generateNewsletterContentWithDB(categories, weekOf)
+      result = await safeNewsletterGenerator.generateNewsletterContentWithDB(categories, weekOf)
     }
 
     console.log(`✅ Generated ${result.articles.length} articles`)
