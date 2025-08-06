@@ -1,5 +1,5 @@
 # Qloo Newsletter System - Eduforge 
-
+<a href="https://www.producthunt.com/products/eduforge-qloo-autonomous-newsletter?embed=true&utm_source=badge-featured&utm_medium=badge&utm_source=badge-eduforge" target="_blank"><img src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1002149&theme=light&t=1754458659587" alt="EduForge - Where&#0032;AI&#0032;forges&#0032;with&#0032;QLOO&#0032;and&#0032;gives&#0032;you&#0032;newsletter&#0032; | Product Hunt" style="width: 250px; height: 54px;" width="250" height="54" /></a>
 
 <img width="1897" height="575" alt="image" src="https://github.com/user-attachments/assets/cdb49059-f76c-4ead-a5fb-a5e00d28dfe2" />
 
