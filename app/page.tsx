@@ -2,7 +2,7 @@ import { NewsletterSubscription } from "@/components/newsletter-subscription"
 import { NewsletterPreview } from "@/components/newsletter-preview"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Sparkles, TrendingUp, Mail, Database, Zap } from "lucide-react"
+import { Sparkles, TrendingUp, Mail, Database, Zap } from 'lucide-react'
 
 export default function Home() {
   return (
@@ -18,14 +18,14 @@ export default function Home() {
               </div>
             </div>
             <h1 className="text-5xl font-bold text-gray-900 mb-6">
-              <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                Qloo Trends
+              <span className="bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">
+                EduForge
               </span>{" "}
               Newsletter
             </h1>
             <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto leading-relaxed">
-              Get personalized insights into entertainment, culture, and trending topics powered by AI and real-time
-              data from Qloo's comprehensive trend analysis.
+              Where Qloo trends forge with AI to educate you. Get personalized insights into entertainment, culture, and
+              trending topics that shape our world - delivered as engaging educational content.
             </p>
 
             {/* Status Indicators */}
@@ -97,10 +97,10 @@ export default function Home() {
         {/* System Features */}
         <div className="mt-20">
           <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">Powered by Advanced Technology</h2>
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">Forged by Advanced Technology</h2>
             <p className="text-gray-600 max-w-2xl mx-auto">
-              Our newsletter system combines cutting-edge AI, real-time data processing, and intelligent caching for the
-              best experience.
+              Our educational newsletter system forges raw trend data into refined knowledge, combining cutting-edge AI
+              with real-time insights for the ultimate learning experience.
             </p>
           </div>
 
