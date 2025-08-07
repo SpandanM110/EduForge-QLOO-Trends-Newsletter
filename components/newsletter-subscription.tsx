@@ -1,262 +1,231 @@
-"use client"
+'use client'
 
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Checkbox } from "@/components/ui/checkbox"
-import { useActionState } from "react"
-import { Mail, Sparkles, Users, TrendingUp, CheckCircle, AlertCircle } from "lucide-react"
+import { useState } from 'react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Badge } from '@/components/ui/badge'
+import { Loader2, CheckCircle, AlertCircle, Sparkles } from 'lucide-react'
+import { toast } from 'sonner'
 
 const categories = [
-  {
-    id: "artists",
-    label: "Artists & Musicians",
-    description: "Latest trends in music and artist insights",
-    icon: "🎵",
-    color: "from-pink-500 to-rose-500",
-  },
-  {
-    id: "trends",
-    label: "Cultural Trends",
-    description: "Emerging trends in entertainment and culture",
-    icon: "📈",
-    color: "from-emerald-500 to-teal-500",
-  },
-  {
-    id: "movies",
-    label: "Movies & TV",
-    description: "Film and television recommendations",
-    icon: "🎬",
-    color: "from-purple-500 to-violet-500",
-  },
-  {
-    id: "books",
-    label: "Books & Literature",
-    description: "Literary trends and book recommendations",
-    icon: "📚",
-    color: "from-red-500 to-orange-500",
-  },
+  { id: 'artists', label: 'Artists & Musicians', description: 'Trending artists and music insights' },
+  { id: 'trends', label: 'Cultural Trends', description: 'Latest cultural movements and phenomena' },
+  { id: 'movies', label: 'Movies & TV', description: 'Entertainment industry insights' },
+  { id: 'books', label: 'Books & Literature', description: 'Literary trends and recommendations' },
+  { id: 'tv_shows', label: 'Television & Streaming', description: 'TV shows and streaming content' },
 ]
 
-// Server action for newsletter subscription
-async function subscribeToNewsletter(prevState: any, formData: FormData) {
-  try {
-    const email = formData.get("email") as string
-    const name = formData.get("name") as string
-    const categories = formData.getAll("categories") as string[]
-
-    if (!email || categories.length === 0) {
-      return {
-        success: false,
-        message: "Email and at least one category are required",
-      }
-    }
-
-    console.log("📝 Subscribing user:", { email, name, categories })
-
-    // Call the optimized newsletter API
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/api/send-test-newsletter-optimized`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          email,
-          name: name || "",
-          categories,
-        }),
-      },
-    )
-
-    const result = await response.json()
-
-    if (response.ok && result.success) {
-      return {
-        success: true,
-        message: result.message || "Successfully subscribed! Check your email.",
-        data: result,
-      }
-    } else {
-      return {
-        success: false,
-        message: result.error || "Failed to subscribe. Please try again.",
-      }
-    }
-  } catch (error) {
-    console.error("Newsletter subscription error:", error)
-    return {
-      success: false,
-      message: "An error occurred. Please try again later.",
-    }
-  }
-}
-
 export function NewsletterSubscription() {
-  const [selectedCategories, setSelectedCategories] = useState<string[]>(["artists", "trends"])
-  const [state, action, isPending] = useActionState(subscribeToNewsletter, null)
+  const [email, setEmail] = useState('')
+  const [name, setName] = useState('')
+  const [selectedCategories, setSelectedCategories] = useState<string[]>(['artists', 'trends'])
+  const [isLoading, setIsLoading] = useState(false)
+  const [isSuccess, setIsSuccess] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const handleCategoryChange = (categoryId: string, checked: boolean) => {
     if (checked) {
-      setSelectedCategories((prev) => [...prev, categoryId])
+      setSelectedCategories([...selectedCategories, categoryId])
     } else {
-      setSelectedCategories((prev) => prev.filter((id) => id !== categoryId))
+      setSelectedCategories(selectedCategories.filter(id => id !== categoryId))
     }
   }
 
-  return (
-    <Card className="w-full shadow-xl border-0 bg-white/80 backdrop-blur-sm">
-      <CardHeader className="pb-6">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="p-2 bg-gradient-to-r from-blue-500 to-purple-500 rounded-lg">
-            <Mail className="h-5 w-5 text-white" />
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (!email) {
+      setError('Email address is required')
+      return
+    }
+
+    if (selectedCategories.length === 0) {
+      setError('Please select at least one category')
+      return
+    }
+
+    setIsLoading(true)
+    setError(null)
+
+    try {
+      // Use the current domain for the API call
+      const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://eduforge.live'
+      
+      const response = await fetch(`${baseUrl}/api/send-test-newsletter-optimized`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email,
+          name: name || undefined,
+          categories: selectedCategories,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP error! status: ${response.status}`)
+      }
+
+      if (data.success) {
+        setIsSuccess(true)
+        toast.success(data.message || 'Newsletter subscription successful!')
+        
+        // Reset form
+        setEmail('')
+        setName('')
+        setSelectedCategories(['artists', 'trends'])
+      } else {
+        throw new Error(data.error || 'Subscription failed')
+      }
+    } catch (error) {
+      console.error('Newsletter subscription error:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Failed to subscribe to newsletter'
+      setError(errorMessage)
+      toast.error(errorMessage)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  if (isSuccess) {
+    return (
+      <Card className="w-full max-w-md mx-auto border-0 shadow-lg bg-gradient-to-br from-green-50 to-emerald-50">
+        <CardContent className="p-8 text-center">
+          <div className="mb-6">
+            <div className="p-3 bg-green-600 rounded-full w-fit mx-auto mb-4">
+              <CheckCircle className="h-8 w-8 text-white" />
+            </div>
+            <h3 className="text-2xl font-bold text-green-900 mb-2">Welcome to EduForge!</h3>
+            <p className="text-green-700">
+              Your personalized newsletter is being forged. Check your email for your first educational insights!
+            </p>
           </div>
-          <CardTitle className="text-2xl font-bold text-gray-900">Subscribe to Newsletter</CardTitle>
+          <Button 
+            onClick={() => setIsSuccess(false)}
+            variant="outline"
+            className="border-green-600 text-green-600 hover:bg-green-600 hover:text-white"
+          >
+            Subscribe Another Email
+          </Button>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <Card className="w-full max-w-md mx-auto border-0 shadow-lg">
+      <CardHeader className="text-center pb-4">
+        <div className="flex justify-center mb-4">
+          <div className="p-2 bg-gradient-to-r from-orange-600 to-red-600 rounded-xl">
+            <Sparkles className="h-6 w-6 text-white" />
+          </div>
         </div>
-        <CardDescription className="text-base text-gray-600 leading-relaxed">
-          Choose your interests and get personalized content delivered weekly to your inbox
+        <CardTitle className="text-2xl font-bold">Join EduForge</CardTitle>
+        <CardDescription>
+          Get AI-powered educational content from trending entertainment and culture data
         </CardDescription>
       </CardHeader>
-
-      <CardContent className="space-y-8">
-        <form action={action} className="space-y-8">
-          {/* Hidden inputs for categories */}
-          {selectedCategories.map((categoryId) => (
-            <input key={categoryId} type="hidden" name="categories" value={categoryId} />
-          ))}
-
-          {/* Email Input */}
-          <div className="space-y-3">
-            <Label htmlFor="email" className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-              <Mail className="h-4 w-4" />
-              Email Address
-            </Label>
-            <Input
-              id="email"
-              name="email"
-              type="email"
-              placeholder="your@email.com"
-              required
-              className="h-12 text-base border-gray-200 focus:border-blue-500 focus:ring-blue-500/20 rounded-xl"
-            />
-          </div>
-
-          {/* Name Input */}
-          <div className="space-y-3">
-            <Label htmlFor="name" className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-              <Users className="h-4 w-4" />
-              Name (Optional)
-            </Label>
-            <Input
-              id="name"
-              name="name"
-              type="text"
-              placeholder="Your Name"
-              className="h-12 text-base border-gray-200 focus:border-blue-500 focus:ring-blue-500/20 rounded-xl"
-            />
-          </div>
-
-          {/* Categories */}
+      <CardContent className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-4">
-            <Label className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-              <TrendingUp className="h-4 w-4" />
-              Content Categories
-            </Label>
-            <div className="grid gap-4">
+            <div>
+              <Label htmlFor="email">Email Address *</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="your@email.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className="mt-1"
+              />
+            </div>
+            
+            <div>
+              <Label htmlFor="name">Name (Optional)</Label>
+              <Input
+                id="name"
+                type="text"
+                placeholder="Your name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+          </div>
+
+          <div>
+            <Label className="text-base font-semibold">Choose Your Interests</Label>
+            <p className="text-sm text-gray-600 mb-4">Select topics you'd like to learn about</p>
+            <div className="space-y-3">
               {categories.map((category) => (
-                <div key={category.id} className="group">
-                  <div className="flex items-start space-x-4 p-4 rounded-xl border border-gray-200 hover:border-gray-300 hover:bg-gray-50/50 transition-all duration-200">
-                    <Checkbox
-                      id={category.id}
-                      name="categories"
-                      value={category.id}
-                      checked={selectedCategories.includes(category.id)}
-                      onCheckedChange={(checked) => handleCategoryChange(category.id, checked as boolean)}
-                      className="mt-1 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
-                    />
-                    <div className="flex-1 space-y-2">
-                      <div className="flex items-center gap-3">
-                        <span className="text-xl">{category.icon}</span>
-                        <Label
-                          htmlFor={category.id}
-                          className="text-base font-semibold text-gray-900 cursor-pointer group-hover:text-blue-700 transition-colors"
-                        >
-                          {category.label}
-                        </Label>
-                      </div>
-                      <p className="text-sm text-gray-600 leading-relaxed">{category.description}</p>
-                    </div>
+                <div key={category.id} className="flex items-start space-x-3 p-3 rounded-lg border hover:bg-gray-50">
+                  <Checkbox
+                    id={category.id}
+                    checked={selectedCategories.includes(category.id)}
+                    onCheckedChange={(checked) => handleCategoryChange(category.id, checked as boolean)}
+                    className="mt-1"
+                  />
+                  <div className="flex-1">
+                    <Label htmlFor={category.id} className="font-medium cursor-pointer">
+                      {category.label}
+                    </Label>
+                    <p className="text-sm text-gray-600">{category.description}</p>
                   </div>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Subscribe Button */}
-          <Button
-            type="submit"
-            className="w-full h-14 text-base font-semibold bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200"
-            disabled={isPending || selectedCategories.length === 0}
+          {selectedCategories.length > 0 && (
+            <div>
+              <Label className="text-sm font-medium text-gray-700">Selected Categories:</Label>
+              <div className="flex flex-wrap gap-2 mt-2">
+                {selectedCategories.map((categoryId) => {
+                  const category = categories.find(c => c.id === categoryId)
+                  return (
+                    <Badge key={categoryId} variant="secondary" className="bg-blue-100 text-blue-800">
+                      {category?.label}
+                    </Badge>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {error && (
+            <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <AlertCircle className="h-4 w-4 text-red-600" />
+              <p className="text-sm text-red-600">{error}</p>
+            </div>
+          )}
+
+          <Button 
+            type="submit" 
+            className="w-full bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700"
+            disabled={isLoading || selectedCategories.length === 0}
           >
-            {isPending ? (
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                Processing...
-              </div>
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Forging Your Newsletter...
+              </>
             ) : (
-              <div className="flex items-center gap-2">
-                <Sparkles className="h-5 w-5" />
-                Subscribe to Newsletter
-              </div>
+              'Forge My Newsletter'
             )}
           </Button>
-
-          {/* Status Messages */}
-          {state?.success && (
-            <div className="p-4 bg-green-50 border border-green-200 rounded-xl">
-              <div className="flex items-center gap-2 text-green-800">
-                <CheckCircle className="h-5 w-5" />
-                <span className="font-medium">{state.message}</span>
-              </div>
-              {state.data?.newsletter && (
-                <div className="mt-2 text-sm text-green-700">
-                  Newsletter "{state.data.newsletter.title}" has been sent to your email!
-                </div>
-              )}
-            </div>
-          )}
-
-          {state && !state.success && (
-            <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
-              <div className="flex items-center gap-2 text-red-800">
-                <AlertCircle className="h-5 w-5" />
-                <span className="font-medium">{state.message}</span>
-              </div>
-            </div>
-          )}
         </form>
 
-        {/* Features */}
-        <div className="pt-6 border-t border-gray-200">
-          <div className="grid grid-cols-2 gap-4 text-center">
-            <div className="space-y-2">
-              <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center mx-auto">
-                <Sparkles className="h-5 w-5 text-blue-600" />
-              </div>
-              <p className="text-sm font-medium text-gray-700">AI-Powered</p>
-              <p className="text-xs text-gray-500">Smart content curation</p>
-            </div>
-            <div className="space-y-2">
-              <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center mx-auto">
-                <TrendingUp className="h-5 w-5 text-purple-600" />
-              </div>
-              <p className="text-sm font-medium text-gray-700">Real-time</p>
-              <p className="text-xs text-gray-500">Latest trend insights</p>
-            </div>
-          </div>
+        <div className="text-center">
+          <p className="text-xs text-gray-500">
+            Free forever • No spam • Unsubscribe anytime
+          </p>
         </div>
       </CardContent>
     </Card>
