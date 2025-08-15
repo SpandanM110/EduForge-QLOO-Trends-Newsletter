@@ -30,19 +30,32 @@ export default function Home() {
 
             {/* Status Indicators */}
             <div className="flex justify-center gap-4 mb-12">
-              <Badge variant="secondary" className="px-4 py-2 bg-green-100 text-green-800 border-green-200">
-                <div className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></div>
-                Database Connected
-              </Badge>
-              <Badge variant="secondary" className="px-4 py-2 bg-blue-100 text-blue-800 border-blue-200">
-                <div className="w-2 h-2 bg-blue-500 rounded-full mr-2 animate-pulse"></div>
-                AI Processing Active
-              </Badge>
-              <Badge variant="secondary" className="px-4 py-2 bg-purple-100 text-purple-800 border-purple-200">
-                <div className="w-2 h-2 bg-purple-500 rounded-full mr-2 animate-pulse"></div>
-                Email Service Ready
-              </Badge>
-            </div>
+  <a
+    href="https://peerlist.io/spandanm110/project/eduforgelive"
+    target="_blank"
+    rel="noreferrer"
+  >
+    <img
+      src="https://peerlist.io/api/v1/projects/embed/PRJHQ7MADB7MKRDA9CO8LKALGGG7GB?showUpvote=false&theme=light"
+      alt="Eduforge.live"
+      style={{ width: "auto", height: "72px" }}
+    />
+  </a>
+
+  <a
+    href="https://www.producthunt.com/products/eduforge-qloo-autonomous-newsletter?embed=true&utm_source=badge-featured&utm_medium=badge&utm_source=badge-eduforge"
+    target="_blank"
+  >
+    <img
+      src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1002149&theme=light&t=1755235150103"
+      alt="EduForge - Where AI forges with QLOO and gives you newsletter | Product Hunt"
+      style={{ width: "250px", height: "54px" }}
+      width="250"
+      height="54"
+    />
+  </a>
+</div>
+
           </div>
         </div>
       </div>
